@@ -75,7 +75,9 @@ static void list_draw(Box b, int top_row, int x, int width, int rows, FileList *
         size_t i = *scroll + (size_t)row;
         attrset(COLOR_PAIR(DIALOG));
         wide_at(top + row + 1, left, L'│'); wide_at(top + row + 1, left + width - 1, L'│');
-        attrset(COLOR_PAIR(focus && i == selected ? SELECT : DIALOG));
+        /* Document selection colors may equal the dialog background. Use the
+         * distinct white-on-black menu highlight for focused list entries. */
+        attrset(COLOR_PAIR(focus && i == selected && i < list->n ? MENU_ACTIVE : DIALOG));
         mvhline(top + row + 1, left + 1, ' ', width - 3);
         if (i < list->n) text_at(top + row + 1, left + 1, list->names[i], width - 4);
         attrset(COLOR_PAIR(SCROLL_TRACK)); wide_at(top + row + 1, left + width - 2, L'\u2592');
