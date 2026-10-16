@@ -1,0 +1,17 @@
+gui for Debian
+==============
+
+This is a local packaging candidate, not an official Debian archive package.
+Version 1.0-1~local1 is deliberately marked UNRELEASED while it is tested.
+No ITP number or archive acceptance is implied by these files.
+
+The package installs /usr/bin/gui and /usr/share/man/man1/gui.1.gz.
+Preferences are stored per user under XDG_CONFIG_HOME/gui or ~/.config/gui;
+there are no package-managed global configuration files.
+
+A previous manual installation at /usr/local/bin/gui can take precedence
+over this package. Run /usr/bin/gui explicitly to test the Debian executable.
+This package does not remove or overwrite a manually installed local copy.
+
+See docs/debian-packaging.md in the upstream source repository for building,
+checking with Lintian, and preparing a future Debian sponsorship request.

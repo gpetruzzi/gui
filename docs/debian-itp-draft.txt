@@ -1,0 +1,36 @@
+DRAFT ONLY - do not send before package-name checks and build review.
+An ITP expresses an intention to maintain a package, not archive acceptance.
+Remove these introductory draft lines before submitting the report.
+
+To: submit@bugs.debian.org
+Subject: ITP: gui -- terminal text editor with a classic menu interface
+
+Package: wnpp
+Severity: wishlist
+Owner: Guillermo Petruzzi <gpetruzzi@gmail.com>
+
+* Package name    : gui
+  Version         : 1.0
+  Upstream Author : Guillermo Petruzzi <gpetruzzi@gmail.com>
+* URL             : https://github.com/gpetruzzi/gui
+* License         : GPL-3.0-or-later
+  Programming Lang: C
+  Description     : terminal text editor with a classic menu interface
+
+gui is a terminal text editor with keyboard and mouse support, menus,
+file selection dialogs, search and replacement, and configurable colors.
+It supports UTF-8 text, nine open documents and two editing panels.
+Selection uses Shift and arrow keys or mouse dragging. Undo history is
+independent per document, and copy/paste share an internal clipboard.
+
+The interface is intended for users who prefer classic menu-based terminal
+editors and familiar selection shortcuts without modal editing.
+The implementation uses C11 and ncursesw and includes core behavior tests.
+
+I intend to maintain this package and will seek sponsorship for its upload.
+The packaging candidate is maintained with the upstream project on GitHub.
+
+Before sending: confirm the package name is available, confirm this ownership
+statement reflects your commitment, review the source release and package
+build logs, and check that no other ITP already exists. No report has been
+filed automatically. Remove this final draft paragraph before submission.

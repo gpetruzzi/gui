@@ -1,0 +1,17 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-3.0-or-later
+set -eu
+
+export LC_ALL=C.UTF-8
+version=$(/usr/bin/gui --version)
+printf '%s\n' "$version" | grep -Fx 'gui 1.0'
+help=$(/usr/bin/gui --help)
+printf '%s\n' "$help" | grep -Fx 'Usage: gui [file]'
+
+output=$(mktemp)
+trap 'rm -f "$output"' EXIT HUP INT TERM
+if /usr/bin/gui first-file second-file >"$output" 2>&1; then
+    echo 'gui unexpectedly accepted two command-line file arguments' >&2
+    exit 1
+fi
+grep -Fx 'Usage: gui [file]' "$output"

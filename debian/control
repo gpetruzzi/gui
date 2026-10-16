@@ -1,0 +1,22 @@
+Source: gui
+Section: editors
+Priority: optional
+Maintainer: Guillermo Petruzzi <gpetruzzi@gmail.com>
+Build-Depends: debhelper-compat (= 13), libncurses-dev
+Standards-Version: 4.7.4
+Rules-Requires-Root: no
+Homepage: https://github.com/gpetruzzi/gui
+Vcs-Git: https://github.com/gpetruzzi/gui.git -b main
+Vcs-Browser: https://github.com/gpetruzzi/gui
+
+Package: gui
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Description: terminal text editor with a classic menu interface
+ gui is a terminal text editor with keyboard and mouse support, a menu bar,
+ file selection dialogs, search and replacement, and configurable colors.
+ .
+ It supports UTF-8 text, up to nine open documents, two editing panels,
+ selection with Shift and arrow keys, and independent undo histories.
+ Copy and paste use a shared internal clipboard. Binary files can be
+ inspected in a read-only hexadecimal view.

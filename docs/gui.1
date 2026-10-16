@@ -1,0 +1,156 @@
+.\" SPDX-License-Identifier: GPL-3.0-or-later
+.\" Copyright (c) 2026 Guillermo Petruzzi and gui contributors
+.TH GUI 1 "October 2026" "gui 1.0" "User Commands"
+.SH NAME
+gui \- terminal text editor with a classic menu interface
+.SH SYNOPSIS
+.B gui
+.RI [ file ]
+.br
+.B gui --help
+.br
+.B gui --version
+.SH DESCRIPTION
+.B gui
+edits UTF-8 text in a color terminal using keyboard shortcuts, menus,
+and mouse input.  It can keep up to nine documents open and display
+two editing panels with independent cursor and scroll positions.
+.PP
+An optional
+.I file
+is opened at startup.  A nonexistent path starts a new document at that path.
+Only one file argument is accepted; use the Open menu to open more documents.
+Without an argument, gui starts with a blank document.
+.SH OPTIONS
+.TP
+.B --help
+Display the version, usage and main shortcuts, then exit.
+.TP
+.B --version
+Display the version and brief usage information, then exit.
+.SH KEYBOARD
+.TP
+.BR Ctrl+N ", " Ctrl+O ", " Ctrl+S
+Create a document, open a file, or save the active document.
+.TP
+.B Ctrl+Q
+Quit, asking about unsaved changes in every open document.
+.TP
+.B Shift+arrows
+Select text while moving the cursor.
+.TP
+.B Ctrl+A
+Select all text in the active document.
+.TP
+.BR Ctrl+C " or " Ctrl+Insert
+Copy the selection to gui's internal clipboard.
+.TP
+.B Ctrl+X
+Cut the selection to the internal clipboard.
+.TP
+.BR Ctrl+V " or " Shift+Insert
+Paste from the internal clipboard.
+.TP
+.BR Ctrl+Z ", " Ctrl+Y
+Undo or redo changes in the active document.
+.TP
+.BR Ctrl+B ", " Ctrl+R ", " F3
+Find text, replace text, or repeat the last search.
+.TP
+.BR Ctrl+F6 ", " Ctrl+F8 ", " Ctrl+F4
+Split, resize, or close an editing window.
+.TP
+.B F6
+Switch panels, or switch to the next document when only one panel is visible.
+.TP
+.B Alt+1 through Alt+9
+Switch documents.
+.TP
+.B F10
+Open the menu bar.  Navigate menus with the arrow keys and Enter.
+.TP
+.B F1
+Open About gui.
+.PP
+Alt+F, Alt+E, Alt+S, Alt+V, Alt+O and Alt+H open File, Edit, Search,
+View, Options and Help, respectively.  Alt+A, Alt+B and Alt+Y are aliases
+for File, Search and Help.
+.PP
+In dialogs, Tab and Shift+Tab change focus, Space toggles checkboxes,
+Enter activates a control, and Esc cancels.  Menu commands are available
+when the terminal intercepts a shortcut.  Alt alone is not detectable in
+terminals that send no input for it.
+.SH MOUSE
+Click to place the cursor or activate a menu or control.  Hold the left
+button and drag to select text, then use a copy or cut shortcut.
+.SH CLIPBOARD
+The clipboard is internal to gui and shared between its documents.
+It does not write selections to the desktop clipboard.
+To paste from another application, use the terminal's paste command.
+Bracketed terminal paste is supported in the document editing area.
+.SH WINDOWS
+Split Window creates another view of the current document.  Choose a
+document from View to display a different document in the active panel.
+Use F6 or a mouse click to switch panels.
+.PP
+Size Window adjusts the divider with Up and Down or with the left mouse
+button held.  Enter accepts the new size and Esc cancels.
+At least 12 terminal rows are needed for two panels.
+.PP
+Closing one of two panels keeps its document open.  Closing the sole
+panel closes its document after checking for unsaved changes.
+Closing the last document creates a blank document.
+.SH SETTINGS
+Options/Settings controls tab spacing, from 1 to 32 columns.
+Options/Colors controls foreground and background colors.
+Accepted preferences are saved per user; no global configuration is required.
+.SH FILES
+.TP
+.I $XDG_CONFIG_HOME/gui/settings
+Preferences when XDG_CONFIG_HOME names an absolute directory.
+.TP
+.I ~/.config/gui/settings
+Preferences when XDG_CONFIG_HOME is unset or is not an absolute path.
+.SH ENVIRONMENT
+.TP
+.B TERM
+Terminal capabilities used by ncurses.  gui does not substitute another profile.
+.TP
+.BR LC_ALL ", " LC_CTYPE ", " LANG
+Locale settings.  A UTF-8 locale, such as C.UTF-8, is required for editing.
+.TP
+.BR XDG_CONFIG_HOME ", " HOME
+Determine the per-user preferences directory.
+.SH LIMITATIONS
+Text must be valid UTF-8 without NUL bytes.  The UTF-8 byte-order mark
+and uniform LF or CRLF line endings are preserved; mixed line endings
+are normalized to CRLF if any CRLF is present.
+.PP
+Open Binary provides a read-only hexadecimal view, not binary editing.
+Its Line Width setting is bytes per row, from 1 to 256.
+Search is literal, without regular expressions.
+Saving over symbolic links is not supported.
+.PP
+Documents and up to 64 undo snapshots per document are held in memory.
+The editor is intended for small and medium files.
+Editing uses Unicode code points, not full grapheme clusters.
+.SH EXIT STATUS
+.TP
+.B 0
+Normal exit, including help and version display.
+.TP
+.B 1
+Invalid arguments or a fatal startup or allocation error.
+.PP
+Nonfatal editing and file-operation errors are reported inside the editor.
+.SH AUTHOR
+Guillermo Petruzzi <gpetruzzi@gmail.com>.
+.SH REPORTING BUGS
+https://github.com/gpetruzzi/gui/issues
+.SH COPYRIGHT
+Copyright (c) 2026 Guillermo Petruzzi and gui contributors.
+Licensed under the GNU General Public License, version 3 or later.
+This software comes without warranty.
+.SH SEE ALSO
+.BR locale (1),
+.BR terminfo (5)

@@ -121,6 +121,23 @@ Author: Guillermo Petruzzi
 License: GNU GPLv3 or later
 ```
 
+## Debian package candidate
+
+The repository includes a Debian packaging candidate, maintained by
+Guillermo Petruzzi <gpetruzzi@gmail.com>. It is not yet an official Debian
+package. See [Debian packaging instructions](docs/debian-packaging.md) for
+dependencies, local builds, Lintian checks and the path toward sponsorship.
+
+After installing the documented build dependencies:
+
+```sh
+sh scripts/build-debian.sh
+```
+
+The script builds committed files in a separate temporary workspace and copies
+artifacts to `dist/debian/`. The Debian package installs `/usr/bin/gui` and
+the `gui(1)` manual; an older `/usr/local/bin/gui` is left untouched.
+
 ## Validation
 
 Core tests cover selection, undo/redo, search, replacement, mouse coordinate mapping, UTF-8/CRLF file I/O, file browser directory scanning, read-only protection, binary hex views, multiple documents, clipboard transfer, split view cursor independence, tab spacing and preference persistence. Run them locally with `make test`; terminal appearance and input behavior also need checking in your terminal.
