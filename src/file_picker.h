@@ -78,7 +78,7 @@ static void list_draw(Box b, int top_row, int x, int width, int rows, FileList *
         attrset(COLOR_PAIR(focus && i == selected ? SELECT : DIALOG));
         mvhline(top + row + 1, left + 1, ' ', width - 3);
         if (i < list->n) text_at(top + row + 1, left + 1, list->names[i], width - 4);
-        attrset(COLOR_PAIR(SCROLL_TRACK)); mvaddch(top + row + 1, left + width - 2, ACS_CKBOARD);
+        attrset(COLOR_PAIR(SCROLL_TRACK)); wide_at(top + row + 1, left + width - 2, L'\u2592');
     }
     attrset(COLOR_PAIR(SCROLL_ARROW) | A_BOLD);
     wide_at(top + 1, left + width - 2, L'↑');

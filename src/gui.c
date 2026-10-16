@@ -254,6 +254,9 @@ static void wide_at(int y, int x, wchar_t ch) {
     wchar_t s[2] = {ch, 0};
     mvaddnwstr(y, x, s, 1);
 }
+static void wide_line(int y, int x, wchar_t ch, int count) {
+    for (int i = 0; i < count && x + i < COLS; ++i) wide_at(y, x + i, ch);
+}
 static void footer(const char *hint) {
     attrset(COLOR_PAIR(STATUS));
     mvhline(LINES - 1, 0, ' ', COLS);
@@ -290,13 +293,13 @@ static void draw_pane(int pane, bool full, int *cursor_y, int *cursor_x) {
     bool changed = full || !cache->valid || cache->doc != active_document || view_changed(&cache->view, &current);
     if (changed) {
         attrset(COLOR_PAIR(FRAME));
-        mvhline(top, 1, ACS_HLINE, width); mvhline(bottom, 1, ACS_HLINE, width);
-        mvaddch(top, 0, ACS_ULCORNER); mvaddch(top, COLS - 1, ACS_URCORNER);
-        mvaddch(bottom, 0, ACS_LLCORNER); mvaddch(bottom, COLS - 1, ACS_LRCORNER);
+        wide_line(top, 1, L'\u2500', width); wide_line(bottom, 1, L'\u2500', width);
+        wide_at(top, 0, L'\u250c'); wide_at(top, COLS - 1, L'\u2510');
+        wide_at(bottom, 0, L'\u2514'); wide_at(bottom, COLS - 1, L'\u2518');
         for (int y = top + 1; y < bottom; ++y) {
-            mvaddch(y, 0, ACS_VLINE); mvaddch(y, COLS - 1, ACS_VLINE);
+            wide_at(y, 0, L'\u2502'); wide_at(y, COLS - 1, L'\u2502');
         }
-        attrset(COLOR_PAIR(TITLE_RULE)); mvhline(top, 1, ACS_HLINE, width);
+        attrset(COLOR_PAIR(TITLE_RULE)); wide_line(top, 1, L'\u2500', width);
         char title[1024], name[32];
         snprintf(name, sizeof name, "UNTITLED%d", active_document + 1);
         snprintf(title, sizeof title, " %s%s%s ", e.path ? e.path : name, dirty() ? " *" : "",
@@ -332,9 +335,9 @@ static void draw_pane(int pane, bool full, int *cursor_y, int *cursor_x) {
         size_t total = 1, first_line = 0;
         for (size_t i = 0; i < e.n; ++i) if (e.s[i] == L'\n') { ++total; if (i < e.top) ++first_line; }
         attrset(COLOR_PAIR(SCROLL_TRACK));
-        for (int y = top + 1; y < bottom; ++y) mvaddch(y, COLS - 1, ACS_CKBOARD);
+        for (int y = top + 1; y < bottom; ++y) wide_at(y, COLS - 1, L'\u2592');
         attrset(COLOR_PAIR(SCROLL_ARROW) | A_BOLD);
-        mvaddch(top + 1, COLS - 1, ACS_UARROW); mvaddch(bottom - 1, COLS - 1, ACS_DARROW);
+        wide_at(top + 1, COLS - 1, L'\u2191'); wide_at(bottom - 1, COLS - 1, L'\u2193');
         if (height > 2) {
             int track = height - 2, thumb = total > (size_t)height ? (int)((double)height / (double)total * track) : track;
             if (thumb < 1) thumb = 1;
@@ -858,7 +861,7 @@ restart:;
             if (i == selected && !enabled) attron(A_DIM);
             mvhline(i + 2, x + 1, ' ', panel_width - 2); text_at(i + 2, x + 2, labels[i], panel_width - 4);
             if (which == 3 && actions[i] == NONE) {
-                attrset(COLOR_PAIR(DIALOG)); mvhline(i + 2, x + 1, ACS_HLINE, panel_width - 2);
+                attrset(COLOR_PAIR(DIALOG)); wide_line(i + 2, x + 1, L'\u2500', panel_width - 2);
             }
         }
         refresh(); wint_t c; int t = key(&c); if (t == ERR) continue;
@@ -1113,13 +1116,8 @@ int main(int argc, char **argv) {
     settings_load();
     e.s = copy_text(L"", 0); e.saved = copy_text(L"", 0); e.preferred = -1;
     if (argc == 2 && !load(argv[1])) die(e.message);
-    /* KiTTY/PuTTY may announce the eight-color "xterm" profile even though
-     * they support indexed colors. Select that capability for this process. */
-    const char *requested_term = getenv("TERM"), *profile = NULL;
-    if (requested_term && (!strcmp(requested_term, "xterm") || !strcmp(requested_term, "xterm-color") || !strcmp(requested_term, "putty")))
-        profile = "xterm-256color";
-    terminal_screen = newterm(profile, stdout, stdin);
-    if (!terminal_screen && profile) terminal_screen = newterm(NULL, stdout, stdin);
+    /* Respect the connection's capabilities; never guess a different TERM. */
+    terminal_screen = newterm(NULL, stdout, stdin);
     if (!terminal_screen) die("Cannot initialize terminal. Check TERM and installed terminfo.");
     screen_ready = true; atexit(cleanup);
     if (!has_colors()) die("A color terminal is required.");
