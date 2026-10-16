@@ -17,7 +17,9 @@ The `c-rewrite` branch contains new C code, not a translation of Microsoft Edit'
 - Open and Save As use a classic two-pane browser: File Name, current path, Existing Files and Directories, with OK, Cancel and Help buttons. Use Tab to move between controls, arrows to select an entry and Enter to enter a directory. Saving to another existing file asks before replacing it.
 - Open has a taller Files pane and a shorter Directories pane, followed by Open Read-only, Open Binary and Line Width. Read-only blocks edits and saving. Open Binary opens a **read-only hexadecimal view**, not a binary editor; Line Width is the number of source bytes per row (1–256, default 70). It is disabled for ordinary text files.
 
-The terminal font controls the exact appearance of characters and shadows.
+The terminal font controls the exact appearance of characters and shadows. Buttons use terminal line characters for thin shadows and ASCII focus markers to avoid missing Unicode glyphs. Standard ANSI colors avoid relying on terminal palette reprogramming.
+
+The editor status bar shows the current one-based Line and Col at the right; columns account for tabs and wide characters. About gui stays open until Enter, Esc, Alt+O or a click on OK; unrelated mouse events do not dismiss it.
 
 Ordinary cursor movement does not erase or rebuild the screen. The editor tracks text revisions, selection, scrolling and terminal size; only changes to those require repainting the document. Status messages update the footer independently. Dialogs and menus are composed before refreshing the terminal, avoiding an intermediate display of the uncovered background.
 
@@ -88,4 +90,3 @@ One open document and literal search without regular expressions. Text editing r
 The document and up to 64 undo states are stored as memory copies, so this prototype is intended for small and medium text files. Editing operates on Unicode code points; complex emoji and combining sequences are not yet treated as indivisible grapheme clusters.
 
 MIT License. The About dialog identifies gui's own C edition and version.
-

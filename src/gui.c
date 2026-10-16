@@ -214,7 +214,11 @@ static void hot_label(int y, int x, const char *label, int max, int accelerator)
     attrset(COLOR_PAIR(DIALOG)); text_at(y, x, label, max);
     if (accelerator >= 0 && accelerator < max && (size_t)accelerator < strlen(label) &&
         y >= 0 && y < LINES && x + accelerator >= 0 && x + accelerator < COLS)
-        mvchgat(y, x + accelerator, 1, A_NORMAL, HOTKEY, NULL);
+    {
+        attrset(COLOR_PAIR(HOTKEY) | A_BOLD);
+        mvaddch(y, x + accelerator, (unsigned char)label[accelerator]);
+        attrset(COLOR_PAIR(DIALOG));
+    }
 }
 static void wide_at(int y, int x, wchar_t ch) {
     if (x < 0 || y < 0 || x >= COLS || y >= LINES) return;
@@ -234,6 +238,7 @@ static void draw(bool present) {
     static ViewState previous;
     static bool valid;
     static char last_message[256];
+    static size_t last_pos = SIZE_MAX;
     int height = LINES - 4, width = COLS - 2;
     if (height < 1 || width < 1) {
         valid = false; repaint_needed = true; erase(); if (present) refresh(); return;
@@ -312,12 +317,24 @@ static void draw(bool present) {
             ++p;
         }
     }
-    if (full || strcmp(last_message, e.message)) {
+    if (full || last_pos != e.pos || previous.revision != current.revision || strcmp(last_message, e.message)) {
         char status[1024];
         if (e.message[0]) snprintf(status, sizeof status, "%s", e.message);
         else snprintf(status, sizeof status, "F1=Help  Enter=Execute  Esc=Cancel  Tab=Next Field");
         footer(status);
+        size_t line = 1;
+        for (size_t i = 0; i < e.pos; ++i) if (e.s[i] == L'\n') ++line;
+        char position[80];
+        snprintf(position, sizeof position, " Line: %zu  Col: %d ", line, col + 1);
+        int length = (int)strlen(position);
+        if (length < COLS) {
+            int x = COLS - length;
+            attrset(COLOR_PAIR(STATUS));
+            if (x > 0) mvaddch(LINES - 1, x - 1, '|');
+            text_at(LINES - 1, x, position, length);
+        }
     }
+    last_pos = e.pos;
     previous = current; valid = true; repaint_needed = false;
     snprintf(last_message, sizeof last_message, "%s", e.message);
     attrset(COLOR_PAIR(EDIT)); move(row + EDIT_TOP, EDIT_LEFT + col - e.left);
@@ -341,16 +358,19 @@ static Box box_open(const char *title, int height, int width) {
 static void button(Box b, int y, int x, const char *label, bool active) {
     int len = (int)strlen(label);
     attrset(COLOR_PAIR(DIALOG));
-    /* Thin black edge rather than a half-row slab; shared by every dialog. */
-    for (int i = 1; i <= len + 2; ++i) wide_at(b.y + y + 1, b.x + x + i, L'▔');
-    wide_at(b.y + y, b.x + x + len + 2, L'▁');
-    attrset(COLOR_PAIR(BUTTON));
-    wide_at(b.y + y, b.x + x, active ? L'►' : L' ');
+    /* Use the terminal line set instead of uncommon Unicode block glyphs. */
+    mvhline(b.y + y + 1, b.x + x + 1, ACS_HLINE, len + 2);
+    mvaddch(b.y + y, b.x + x + len + 2, ACS_HLINE);
+    attrset(COLOR_PAIR(BUTTON) | A_BOLD);
+    mvaddch(b.y + y, b.x + x, active ? '>' : ' ');
     text_at(b.y + y, b.x + x + 1, label, len);
-    wide_at(b.y + y, b.x + x + len + 1, active ? L'◄' : L' ');
+    mvaddch(b.y + y, b.x + x + len + 1, active ? '<' : ' ');
     int accelerator = 0;
     while (label[accelerator] == ' ') ++accelerator;
-    if (label[accelerator]) mvchgat(b.y + y, b.x + x + 1 + accelerator, 1, A_UNDERLINE, BUTTON, NULL);
+    if (label[accelerator]) {
+        attrset(COLOR_PAIR(BUTTON) | A_BOLD | A_UNDERLINE);
+        mvaddch(b.y + y, b.x + x + 1 + accelerator, (unsigned char)label[accelerator]);
+    }
 }
 static int key(wint_t *value) { return get_wch(value); }
 static int dialog_key(wint_t *value) {
@@ -680,8 +700,14 @@ static void about(void) {
     for (;;) {
         wint_t c; int type = dialog_key(&c);
         if (type == ERR) continue;
-        if (type == ALT_INPUT && c != 'o') continue;
-        break;
+        if (type == ALT_INPUT && c == 'o') break;
+        if (type == OK && (c == '\n' || c == '\r' || c == 27)) break;
+        if (type == KEY_CODE_YES && (c == KEY_ENTER || c == KEY_RESIZE)) break;
+        if (type == KEY_CODE_YES && c == KEY_MOUSE) {
+            MEVENT m;
+            if (getmouse(&m) == OK && (m.bstate & (BUTTON1_CLICKED | BUTTON1_PRESSED)) &&
+                m.y == b.y + 6 && m.x >= b.x + 21 && m.x < b.x + 25) break;
+        }
     }
 }
 enum { NONE, NEW, OPEN, SAVE, QUIT, UNDO, REDO, COPY, CUT, PASTE, FIND, REPLACE, SELECT_ALL, ABOUT, NEXT, CASE, WHOLE, SAVE_AS, CLEAR };
@@ -955,20 +981,7 @@ int main(int argc, char **argv) {
     if (COLOR_PAIRS <= DISABLED) die("The terminal does not provide enough color pairs.");
     short white = COLORS >= 16 ? 15 : COLOR_WHITE;
     short blue = COLOR_BLUE, gray = COLOR_WHITE, dark_gray = COLORS >= 16 ? 8 : COLOR_BLACK;
-    if (can_change_color() && COLORS >= 20) {
-        const short values[4][3] = {{0, 0, 667}, {1000, 1000, 1000}, {667, 667, 667}, {333, 333, 333}};
-        for (int i = 0; i < 4; ++i) {
-            short slot = (short)(16 + i), r, g, b;
-            if (color_content(slot, &r, &g, &b) == ERR) break;
-            palette_saved[palette_count][0] = slot;
-            palette_saved[palette_count][1] = r;
-            palette_saved[palette_count][2] = g;
-            palette_saved[palette_count][3] = b;
-            ++palette_count;
-            init_color(slot, values[i][0], values[i][1], values[i][2]);
-        }
-        if (palette_count == 4) { blue = 16; white = 17; gray = 18; dark_gray = 19; }
-    }
+    /* Standard ANSI colors also work when the terminal ignores palette updates. */
     init_pair(EDIT, white, blue); init_pair(BAR, COLOR_BLACK, gray);
     init_pair(SELECT, blue, gray); init_pair(DIALOG, COLOR_BLACK, gray);
     init_pair(BUTTON, COLOR_BLACK, white); init_pair(SHADOW, COLOR_BLACK, COLOR_BLACK);
@@ -996,4 +1009,3 @@ int main(int argc, char **argv) {
     clear_history(e.undo, &e.un); clear_history(e.redo, &e.rn); return 0;
 }
 #endif
-
