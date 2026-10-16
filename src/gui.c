@@ -453,10 +453,17 @@ static void button(Box b, int y, int x, const char *label, bool active) {
     }
 }
 static int key(wint_t *value) { return get_wch(value); }
+static void configure_escape(void) {
+    const char *delay = getenv("ESCDELAY");
+    if (!delay || !*delay) set_escdelay(50);
+    notimeout(stdscr, FALSE);
+}
 static int dialog_key(wint_t *value) {
     int type = key(value);
     if (type != OK || *value != 27) return type;
-    wint_t next; timeout(60); int next_type = key(&next); timeout(-1);
+    /* get_wch already disambiguated terminal escape sequences. An Alt suffix
+     * is queued by now; do not add another blocking wait for a lone Escape. */
+    wint_t next; timeout(0); int next_type = key(&next); timeout(-1);
     if (next_type == OK && next < 128 && iswalpha(next)) {
         *value = towlower(next); return ALT_INPUT;
     }
@@ -1017,7 +1024,7 @@ static bool handle(wint_t c, int type) {
         if (c == CTRL('b')) return action(FIND);
         if (c == CTRL('r')) return action(REPLACE);
         if (c == 27) {
-            wint_t next; timeout(100); int t = key(&next); timeout(-1);
+            wint_t next; timeout(0); int t = key(&next); timeout(-1);
             if (t == OK) {
                 if (next >= '1' && next <= '9') { document_select((int)(next - '1')); return true; }
                 int which = menu_letter(next);
@@ -1136,7 +1143,7 @@ int main(int argc, char **argv) {
     if (!terminal_screen) die("Cannot initialize terminal. Check TERM and installed terminfo.");
     screen_ready = true; atexit(cleanup);
     if (!has_colors()) die("A color terminal is required.");
-    raw(); noecho(); keypad(stdscr, TRUE); start_color();
+    raw(); noecho(); keypad(stdscr, TRUE); configure_escape(); start_color();
     if (COLOR_PAIRS <= PREVIEW) die("The terminal does not provide enough color pairs.");
     short white = COLORS >= 256 ? 231 : COLORS >= 16 ? 15 : COLOR_WHITE;
     short black = COLORS >= 256 ? 16 : COLOR_BLACK;

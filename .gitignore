@@ -1,5 +1,6 @@
 /gui
 /tests/core-test
+/tests/dialog-test
 *.o
 *.deb
 *.rpm

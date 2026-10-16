@@ -77,7 +77,9 @@ View, Options and Help, respectively.  Alt+A, Alt+B and Alt+Y are aliases
 for File, Search and Help.
 .PP
 In dialogs, Tab and Shift+Tab change focus, Space toggles checkboxes,
-Enter activates a control, and Esc cancels.  Menu commands are available
+Enter activates a control, and a single Esc cancels the current dialog.
+In Open, Enter on a selected file opens it immediately; Enter on a directory
+navigates into it.  Menu commands are available
 when the terminal intercepts a shortcut.  Alt alone is not detectable in
 terminals that send no input for it.
 .SH MOUSE
@@ -115,6 +117,11 @@ Preferences when XDG_CONFIG_HOME is unset or is not an absolute path.
 .TP
 .B TERM
 Terminal capabilities used by ncurses.  gui does not substitute another profile.
+.TP
+.B ESCDELAY
+Milliseconds allowed to distinguish Esc from a terminal key sequence.
+gui defaults to 50 when this variable is unset.  An explicit value is
+respected; a larger value may help on slow connections but delays Esc.
 .TP
 .BR LC_ALL ", " LC_CTYPE ", " LANG
 Locale settings.  A UTF-8 locale, such as C.UTF-8, is required for editing.

@@ -17,7 +17,11 @@ install: gui docs/gui.1
 	install -m 644 docs/gui.1 $(DESTDIR)$(MANDIR)/man1/gui.1
 tests/core-test: tests/core.c src/gui.c src/file_picker.h src/workspace.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) -Wno-unused-function -o $@ $< $(LDFLAGS) $(LDLIBS)
-test: tests/core-test
+tests/dialog-test: tests/dialogs.c src/gui.c src/file_picker.h src/workspace.h
+	$(CC) $(CPPFLAGS) $(CFLAGS) -Wno-unused-function -o $@ $< $(LDFLAGS) $(LDLIBS)
+
+test: tests/core-test tests/dialog-test
 	./tests/core-test
+	./tests/dialog-test
 clean:
-	rm -f gui tests/core-test
+	rm -f gui tests/core-test tests/dialog-test

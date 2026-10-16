@@ -13,7 +13,7 @@ Open up to nine documents, work in two editing panels, search and replace text, 
 - No line numbers and no current-line highlight. Only explicitly selected text changes color.
 - Gray dialogs with white title strips, dotted input fields, checkboxes and white buttons with thin black shadows. Labels highlight their Alt access letter in white; button access letters are underlined in black for contrast against the white button face.
 - File and directory scrollbars use white arrows on black, white stipple on a black track and a solid white proportional thumb. These styles are shared by all applicable dialogs and editor panels.
-- Open and Save As use a classic two-pane browser: File Name, current path, Existing Files and Directories, with OK, Cancel and Help buttons. Use Tab to move between controls, arrows to select an entry and Enter to enter a directory. Saving to another existing file asks before replacing it.
+- Open and Save As use a classic two-pane browser: File Name, current path, Existing Files and Directories, with OK, Cancel and Help buttons. Use Tab to move between controls and arrows to select an entry. In Open, Enter opens the selected file immediately; double-clicking a file also opens it. Enter on a directory navigates into it. Saving to another existing file asks before replacing it.
 - Open has a taller Files pane and a shorter Directories pane, followed by Open Read-only, Open Binary and Line Width. Read-only blocks edits and saving. Open Binary opens a **read-only hexadecimal view**, not a binary editor; Line Width is the number of source bytes per row (1–256, default 70). It is disabled for ordinary text files.
 
 The terminal font controls the exact appearance of characters and shadows. All dialogs share a full-width, one-row white title strip, white buttons with black text, inward ASCII arrow focus markers (`> OK <`) and a short half-cell black shadow offset down and right. On 256-color terminals, fixed palette slots provide black (#000000), white (#ffffff) and a darker gray (#a8a8a8). Button text uses no bold or reverse video. A UTF-8 font containing half-block glyphs is required for those details. No terminal palette entries are reprogrammed.
@@ -67,6 +67,12 @@ The clipboard is internal to gui and shared between its open documents. To paste
 To copy with the mouse, hold the left button and drag, release it, press Ctrl+C or choose Edit → Copy, then use Ctrl+V inside gui. The status bar reports the number of characters copied to gui's internal clipboard. Copying without a selection reports "No text selected." Drag handling preserves its anchor across repeated held-button events and ends on release, including outside the document.
 
 Use Tab and Shift+Tab to move between dialog controls, Space to toggle checkboxes, Enter to activate a control, and Esc to cancel. The mouse can place the cursor, select text, open menus and activate search dialog controls.
+
+A single Esc cancels the current dialog, regardless of the focused control.
+The default terminal escape-sequence delay is 50 milliseconds, with no extra
+blocking wait in the dialog Alt-key parser. For connections that deliver
+function-key sequences slowly, an explicit `ESCDELAY` setting is respected;
+for example, `ESCDELAY=200 ./gui` allows a longer sequence timeout.
 
 Dialog Alt shortcuts: file browsers use N for File Name, F for Files, D for Directories, O for OK, C for Cancel and H for Help. Open adds R for Read-only, B for Binary and W for Line Width. Find/Replace use F for Find What, R for Replace With, W for Whole Word, M for Match Case, O for OK, A for All, C for Cancel and H for Help. Save confirmations use S for Save, D for Discard and C for Cancel.
 
@@ -139,6 +145,12 @@ artifacts to `dist/debian/`. The Debian package installs `/usr/bin/gui` and
 the `gui(1)` manual; an older `/usr/local/bin/gui` is left untouched.
 
 ## Validation
+
+`make test` runs the core tests and headless ncurses dialog regressions. The
+dialog tests check direct opening from the file list, directory navigation,
+read-only opening, cancellation of each modal with a single Esc, and Alt and
+arrow-key handling. They use temporary streams and require xterm terminfo,
+provided by Debian's ncurses-base package; no interactive display is needed.
 
 Core tests cover selection, undo/redo, search, replacement, mouse coordinate mapping, UTF-8/CRLF file I/O, file browser directory scanning, read-only protection, binary hex views, multiple documents, clipboard transfer, split view cursor independence, tab spacing and preference persistence. Run them locally with `make test`; terminal appearance and input behavior also need checking in your terminal.
 

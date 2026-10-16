@@ -254,12 +254,18 @@ static bool path_prompt(const char *title, char **out) {
             if (!pane && (old != selected[pane] || enter))
                 file_name_set(name, &pos, list->names[selected[pane]]);
             if (!enter) continue;
-            if (!pane) { focus = 0; continue; }
-            char *joined = path_join(dir, list->names[selected[pane]]), *next = realpath(joined, NULL); free(joined);
-            if (next && directory_scan(next, &files, &dirs)) {
-                free(dir); dir = next; selected[0] = selected[1] = scroll[0] = scroll[1] = 0;
-            } else { if (!next) message(strerror(errno)); free(next); }
-            continue;
+            if (!pane) {
+                focus = 0;
+                if (!opening) continue;
+                /* Enter (or double-click) on a file follows the same validation
+                 * and Open Options path as the OK button below. */
+            } else {
+                char *joined = path_join(dir, list->names[selected[pane]]), *next = realpath(joined, NULL); free(joined);
+                if (next && directory_scan(next, &files, &dirs)) {
+                    free(dir); dir = next; selected[0] = selected[1] = scroll[0] = scroll[1] = 0;
+                } else { if (!next) message(strerror(errno)); free(next); }
+                continue;
+            }
         }
         if (enter || (c == ' ' && focus >= ok_focus)) {
             if (focus == ok_focus + 1) break;
