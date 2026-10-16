@@ -1,4 +1,4 @@
-/* Classic two-pane file dialog for gui. SPDX-License-Identifier: MIT
+/* Classic two-pane file dialog for gui. SPDX-License-Identifier: GPL-3.0-or-later
  * Included after the editor's dialog and text-field helpers.
  */
 #include <dirent.h>

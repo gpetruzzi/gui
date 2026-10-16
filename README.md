@@ -1,7 +1,7 @@
 # gui — C edition
 
 An independent Linux terminal editor written from scratch in C11 with ncursesw.
-The `c-rewrite` branch contains new C code, not a translation of Microsoft Edit's Rust implementation. The older Rust variant remains in `main`.
+The `main` branch contains independent C code, not a translation of Microsoft Edit's Rust implementation.
 
 **Development prototype. The latest interface changes have not been compiled or visually verified by the assistant.** Try this branch separately before replacing an installed editor.
 
@@ -76,7 +76,7 @@ Dialog Alt shortcuts: file browsers use N for File Name, F for Files, D for Dire
 ```sh
 apt update
 apt install build-essential libncurses-dev git
-git clone --branch c-rewrite --single-branch https://github.com/gpetruzzi/gui.git gui-c
+git clone --branch main --single-branch https://github.com/gpetruzzi/gui.git gui-c
 cd gui-c
 make
 make test
@@ -107,4 +107,12 @@ Up to nine documents, two panels and literal search without regular expressions.
 
 The document and up to 64 undo states are stored as memory copies, so this prototype is intended for small and medium text files. Editing operates on Unicode code points; complex emoji and combining sequences are not yet treated as indivisible grapheme clusters.
 
-MIT License. The About dialog identifies gui's own C edition and version.
+## License
+
+gui is distributed under the **GNU General Public License, version 3 or (at your option) any later version** (SPDX: `GPL-3.0-or-later`). See [LICENSE](LICENSE) for the complete terms and [LICENSING.md](LICENSING.md) for the transition from MIT.
+
+You may use, modify and redistribute gui, including commercially. When distributing covered versions, comply with the GPL requirements, including providing the corresponding source code and preserving the required notices. Private modifications do not require public release.
+
+Previously published MIT versions retain their MIT permissions. The historical MIT notice is preserved in [LICENSES/MIT-legacy.txt](LICENSES/MIT-legacy.txt). External dependencies retain their own licenses.
+
+The About dialog identifies gui's own C edition and GPL license.

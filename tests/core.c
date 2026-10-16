@@ -1,4 +1,4 @@
-/* Core behavior tests; no terminal initialization. SPDX-License-Identifier: MIT */
+/* Core behavior tests; no terminal initialization. SPDX-License-Identifier: GPL-3.0-or-later */
 #define GUI_TEST
 #include "../src/gui.c"
 #include <assert.h>

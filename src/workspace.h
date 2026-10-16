@@ -1,4 +1,4 @@
-/* Documents, split views and preferences. SPDX-License-Identifier: MIT */
+/* Documents, split views and preferences. SPDX-License-Identifier: GPL-3.0-or-later */
 static void pane_capture(void) {
     panes[active_pane] = (Pane){active_document, e.pos, e.anchor, e.top, e.left};
 }
