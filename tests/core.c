@@ -42,6 +42,10 @@ static void test_search_and_replace(void) {
 }
 static void test_lines_and_history_limit(void) {
     document(L"ab\n12345\nz");
+    assert(mouse_position(EDIT_TOP, EDIT_LEFT) == 0);
+    assert(mouse_position(EDIT_TOP, EDIT_LEFT + 1) == 1);
+    assert(mouse_position(EDIT_TOP + 1, EDIT_LEFT + 2) == 5);
+    assert(menu_from_x(1) == 0 && menu_from_x(22) == 2 && menu_from_x(50) == 5);
     e.pos = e.anchor = 2;
     vertical(1, true);
     assert(e.anchor == 2 && e.pos == 5);

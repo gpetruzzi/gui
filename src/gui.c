@@ -32,7 +32,12 @@
 #define K_PASTEBEGIN (KEY_MAX + 9)
 #define K_PASTEEND (KEY_MAX + 10)
 
-enum { EDIT = 1, BAR, SELECT, DIALOG, BUTTON, SHADOW };
+enum { EDIT = 1, BAR, SELECT, DIALOG, BUTTON, SHADOW, STATUS, FRAME, TITLE };
+#define EDIT_TOP 2
+#define EDIT_LEFT 1
+static const char *menu_names[] = {"Archivo", "Edición", "Buscar", "Ver", "Opciones", "Ayuda"};
+static const int menu_x[] = {1, 11, 22, 31, 38, 49};
+static const int menu_width[] = {7, 7, 6, 3, 8, 5};
 typedef struct { wchar_t *s; size_t n, pos, anchor; } Snapshot;
 typedef struct {
     wchar_t *s, *saved, *clip;
@@ -47,7 +52,7 @@ typedef struct {
 } Editor;
 static Editor e;
 static bool screen_ready;
-static short palette_saved[3][4];
+static short palette_saved[4][4];
 static int palette_count;
 
 static void cleanup(void) {
@@ -178,8 +183,17 @@ static void wide_at(int y, int x, wchar_t ch) {
     wchar_t s[2] = {ch, 0};
     mvaddnwstr(y, x, s, 1);
 }
+static void footer(const char *hint) {
+    attrset(COLOR_PAIR(STATUS));
+    mvhline(LINES - 1, 0, ' ', COLS);
+    text_at(LINES - 1, 0, hint, COLS);
+}
+static int menu_from_x(int x) {
+    for (int i = 5; i > 0; --i) if (x >= menu_x[i]) return i;
+    return 0;
+}
 static void draw(void) {
-    int height = LINES - 2, width = COLS - 1;
+    int height = LINES - 4, width = COLS - 2;
     if (height < 1 || width < 1) { erase(); refresh(); return; }
     e.top = line_start(e.top > e.n ? e.n : e.top);
     size_t start = line_start(e.pos);
@@ -193,10 +207,30 @@ static void draw(void) {
     if (col >= e.left + width) e.left = col - width + 1;
     bkgd(COLOR_PAIR(EDIT)); erase();
     attrset(COLOR_PAIR(BAR)); mvhline(0, 0, ' ', COLS);
-    text_at(0, 1, "Archivo   Edición   Ver   Ayuda", COLS - 2);
+    for (int i = 0; i < 6; ++i) {
+        text_at(0, menu_x[i], menu_names[i], COLS - menu_x[i]);
+        int accelerator = menu_x[i] + (i == 5 ? 1 : 0);
+        if (accelerator < COLS) mvchgat(0, accelerator, 1, A_UNDERLINE, BAR, NULL);
+    }
+    attrset(COLOR_PAIR(FRAME));
+    for (int x = 1; x < COLS - 1; ++x) {
+        wide_at(1, x, L'─'); wide_at(LINES - 2, x, L'─');
+    }
+    for (int y = EDIT_TOP; y < LINES - 2; ++y) {
+        wide_at(y, 0, L'│'); wide_at(y, COLS - 1, L'│');
+    }
+    wide_at(1, 0, L'┌'); wide_at(1, COLS - 1, L'┐');
+    wide_at(LINES - 2, 0, L'└'); wide_at(LINES - 2, COLS - 1, L'┘');
+    attrset(COLOR_PAIR(SHADOW)); mvhline(1, 1, ' ', width);
+    char title[1024];
+    snprintf(title, sizeof title, " %s%s ", e.path ? e.path : "Sin nombre", dirty() ? " *" : "");
+    int title_len = (int)strlen(title);
+    int title_x = title_len < width ? (COLS - title_len) / 2 : 1;
+    attrset(COLOR_PAIR(BAR));
+    text_at(1, title_x, title, width);
     size_t a, b; range(&a, &b);
     p = e.top;
-    for (int y = 1; y <= height; ++y) {
+    for (int y = EDIT_TOP; y < EDIT_TOP + height; ++y) {
         int x = 0;
         while (p < e.n && e.s[p] != L'\n') {
             wchar_t c = e.s[p]; int w = cell_width(c, x);
@@ -206,9 +240,9 @@ static void draw(void) {
             if (c == L'\t') {
                 for (int j = 0; j < w; ++j)
                     if (x + j >= e.left && x + j - e.left < width)
-                        mvaddch(y, x + j - e.left, ' ');
+                        mvaddch(y, EDIT_LEFT + x + j - e.left, ' ');
             } else if (w > 0 && x >= e.left && x + w <= e.left + width) {
-                wide_at(y, x - e.left, iswprint(c) ? c : L'?');
+                wide_at(y, EDIT_LEFT + x - e.left, iswprint(c) ? c : L'?');
             } else if (w == 0 && x > e.left && x <= e.left + width) {
                 /* Combining marks attach to the preceding displayed character. */
                 wchar_t mark[2] = {c, 0}; addnwstr(mark, 1);
@@ -217,19 +251,17 @@ static void draw(void) {
         }
         if (p >= e.n) break;
         if (p >= a && p < b && x >= e.left && x - e.left < width) {
-            attrset(COLOR_PAIR(SELECT)); mvaddch(y, x - e.left, ' ');
+            attrset(COLOR_PAIR(SELECT)); mvaddch(y, EDIT_LEFT + x - e.left, ' ');
         }
         ++p;
     }
-    attrset(COLOR_PAIR(BAR)); mvhline(LINES - 1, 0, ' ', COLS);
     size_t line = 1;
     for (size_t i = 0; i < e.pos; ++i) if (e.s[i] == L'\n') ++line;
     char status[1024];
-    snprintf(status, sizeof status, " %s%s | %zu:%d | %s", e.path ? e.path : "Sin nombre",
-             dirty() ? " *" : "", line, col + 1,
-             e.message[0] ? e.message : "Ctrl+B Buscar  Ctrl+R Reemplazar  Ctrl+S Guardar");
-    text_at(LINES - 1, 0, status, COLS);
-    attrset(COLOR_PAIR(EDIT)); move(row + 1, col - e.left); curs_set(1); refresh();
+    if (e.message[0]) snprintf(status, sizeof status, "%s", e.message);
+    else snprintf(status, sizeof status, "F1=Ayuda  Ctrl+B=Buscar  Ctrl+R=Reemplazar  Ctrl+S=Guardar  %zu:%d", line, col + 1);
+    footer(status);
+    attrset(COLOR_PAIR(EDIT)); move(row + EDIT_TOP, EDIT_LEFT + col - e.left); curs_set(1); refresh();
 }
 typedef struct { int y, x, h, w; } Box;
 static Box box_open(const char *title, int height, int width) {
@@ -239,8 +271,10 @@ static Box box_open(const char *title, int height, int width) {
     for (int y = 1; y <= height; ++y) mvhline(b.y + y, b.x + 1, ' ', width);
     attrset(COLOR_PAIR(DIALOG));
     for (int y = 0; y < height; ++y) mvhline(b.y + y, b.x, ' ', width);
-    attrset(COLOR_PAIR(BAR)); mvhline(b.y, b.x, ' ', width);
+    attrset(COLOR_PAIR(TITLE)); mvhline(b.y, b.x, ' ', width);
     text_at(b.y, b.x + (width - (int)strlen(title)) / 2, title, width - 2);
+    footer("Enter=Ejecutar  Esc=Cancelar  Tab=Siguiente campo  Shift+Tab=Anterior");
+    mvchgat(LINES - 1, 0, COLS, A_NORMAL, BAR, NULL);
     return b;
 }
 static void button(Box b, int y, int x, const char *label, bool active) {
@@ -527,37 +561,56 @@ static void about(void) {
     button(b, 6, 21, "Aceptar", true); refresh();
     wint_t c; key(&c);
 }
-enum { NONE, NEW, OPEN, SAVE, QUIT, UNDO, REDO, COPY, CUT, PASTE, FIND, REPLACE, SELECT_ALL, ABOUT };
+enum { NONE, NEW, OPEN, SAVE, QUIT, UNDO, REDO, COPY, CUT, PASTE, FIND, REPLACE, SELECT_ALL, ABOUT, NEXT, CASE, WHOLE };
 static int menu(int which) {
 restart:;
     const char *file[] = {"Nuevo          Ctrl+N", "Abrir          Ctrl+O", "Guardar        Ctrl+S", "Salir          Ctrl+Q"};
     const int fa[] = {NEW, OPEN, SAVE, QUIT};
     const char *edit[] = {"Deshacer       Ctrl+Z", "Rehacer        Ctrl+Y", "Copiar         Ctrl+C", "Cortar         Ctrl+X", "Pegar          Ctrl+V", "Buscar         Ctrl+B", "Reemplazar     Ctrl+R", "Seleccionar    Ctrl+A"};
     const int ea[] = {UNDO, REDO, COPY, CUT, PASTE, FIND, REPLACE, SELECT_ALL};
+    const char *search[] = {"Buscar         Ctrl+B", "Reemplazar     Ctrl+R", "Siguiente      F3"};
+    const int sa[] = {FIND, REPLACE, NEXT};
     const char *view[] = {"Sin números de línea", "Sin resaltar la línea"};
     const int va[] = {NONE, NONE};
+    const char *options[] = {"Mayúsculas/minúsculas", "Palabras completas"};
+    const int oa[] = {CASE, WHOLE};
     const char *help[] = {"Acerca de gui"}; const int ha[] = {ABOUT};
-    const char **labels = which == 0 ? file : which == 1 ? edit : which == 2 ? view : help;
-    const int *actions = which == 0 ? fa : which == 1 ? ea : which == 2 ? va : ha;
-    int count = which == 0 ? 4 : which == 1 ? 8 : which == 2 ? 2 : 1;
-    if (small_screen(count + 2, 26)) return NONE;
-    int selected = 0, x = which == 0 ? 1 : which == 1 ? 11 : which == 2 ? 21 : 27;
-    if (x + 26 > COLS) x = COLS - 26;
+    const char **labels = which == 0 ? file : which == 1 ? edit : which == 2 ? search : which == 3 ? view : which == 4 ? options : help;
+    const int *actions = which == 0 ? fa : which == 1 ? ea : which == 2 ? sa : which == 3 ? va : which == 4 ? oa : ha;
+    int count = which == 0 ? 4 : which == 1 ? 8 : which == 2 ? 3 : which == 5 ? 1 : 2;
+    if (small_screen(count + 3, 29)) return NONE;
+    int selected = 0, x = menu_x[which];
+    if (x + 29 > COLS) x = COLS - 29;
     for (;;) {
         draw(); curs_set(0);
+        mvchgat(0, menu_x[which], menu_width[which], A_NORMAL, SELECT, NULL);
+        footer("F1=Ayuda  Enter=Ejecutar  Esc=Cancelar  Flechas=Cambiar menú");
+        mvchgat(LINES - 1, 0, COLS, A_NORMAL, BAR, NULL);
+        attrset(COLOR_PAIR(SHADOW));
+        for (int y = 2; y <= count + 3; ++y) mvhline(y, x + 1, ' ', 28);
+        attrset(COLOR_PAIR(DIALOG));
+        for (int y = 1; y <= count + 2; ++y) mvhline(y, x, ' ', 28);
+        for (int col = 1; col < 27; ++col) { wide_at(1, x + col, L'─'); wide_at(count + 2, x + col, L'─'); }
+        wide_at(1, x, L'┌'); wide_at(1, x + 27, L'┐');
+        wide_at(count + 2, x, L'└'); wide_at(count + 2, x + 27, L'┘');
         for (int i = 0; i < count; ++i) {
+            attrset(COLOR_PAIR(DIALOG));
+            wide_at(i + 2, x, L'│'); wide_at(i + 2, x + 27, L'│');
             attrset(COLOR_PAIR(i == selected ? SELECT : DIALOG));
-            mvhline(i + 1, x, ' ', 25); text_at(i + 1, x + 1, labels[i], 23);
+            mvhline(i + 2, x + 1, ' ', 26); text_at(i + 2, x + 2, labels[i], 24);
+            if (which == 4 && ((i == 0 && e.match_case) || (i == 1 && e.whole_word)))
+                mvaddch(i + 2, x + 26, '*');
         }
         refresh(); wint_t c; int t = key(&c); if (t == ERR) continue;
         if (c == 27 || (t == KEY_CODE_YES && c == KEY_RESIZE)) return NONE;
         if (t == KEY_CODE_YES && c == KEY_UP) selected = (selected + count - 1) % count;
         else if (t == KEY_CODE_YES && c == KEY_DOWN) selected = (selected + 1) % count;
-        else if (t == KEY_CODE_YES && c == KEY_LEFT) { which = (which + 3) % 4; goto restart; }
-        else if (t == KEY_CODE_YES && c == KEY_RIGHT) { which = (which + 1) % 4; goto restart; }
+        else if (t == KEY_CODE_YES && c == KEY_LEFT) { which = (which + 5) % 6; goto restart; }
+        else if (t == KEY_CODE_YES && c == KEY_RIGHT) { which = (which + 1) % 6; goto restart; }
         else if (t == KEY_CODE_YES && c == KEY_MOUSE) {
             MEVENT m; if (getmouse(&m) == OK && (m.bstate & (BUTTON1_CLICKED | BUTTON1_PRESSED))) {
-                if (m.y >= 1 && m.y <= count && m.x >= x && m.x < x + 25) return actions[m.y - 1];
+                if (m.y == 0) { which = menu_from_x(m.x); goto restart; }
+                if (m.y >= 2 && m.y <= count + 1 && m.x > x && m.x < x + 27) return actions[m.y - 2];
                 return NONE;
             }
         } else if (c == '\n' || c == '\r' || (t == KEY_CODE_YES && c == KEY_ENTER)) return actions[selected];
@@ -579,12 +632,15 @@ static bool action(int a) {
     else if (a == REPLACE) search_dialog(true);
     else if (a == SELECT_ALL) { e.anchor = 0; e.pos = e.n; }
     else if (a == ABOUT) about();
+    else if (a == NEXT) find_next(e.pos);
+    else if (a == CASE) { e.match_case = !e.match_case; message(e.match_case ? "Distinguir mayúsculas: activado." : "Distinguir mayúsculas: desactivado."); }
+    else if (a == WHOLE) { e.whole_word = !e.whole_word; message(e.whole_word ? "Palabras completas: activado." : "Palabras completas: desactivado."); }
     return true;
 }
 static size_t mouse_position(int y, int x) {
     size_t p = e.top;
-    for (int i = 1; i < y && p < e.n; ++i) { size_t end = line_end(p); p = end < e.n ? end + 1 : end; }
-    return at_column(p, x + e.left);
+    for (int i = EDIT_TOP; i < y && p < e.n; ++i) { size_t end = line_end(p); p = end < e.n ? end + 1 : end; }
+    return at_column(p, x - EDIT_LEFT + e.left);
 }
 static void bracketed_paste(void) {
     size_t n = 0, cap = 256; wchar_t *s = alloc(cap * sizeof(*s));
@@ -624,8 +680,10 @@ static bool handle(wint_t c, int type) {
                 next = towlower(next);
                 if (next == 'a') return action(menu(0));
                 if (next == 'e') return action(menu(1));
-                if (next == 'v') return action(menu(2));
-                if (next == 'y') return action(menu(3));
+                if (next == 'b') return action(menu(2));
+                if (next == 'v') return action(menu(3));
+                if (next == 'o') return action(menu(4));
+                if (next == 'y') return action(menu(5));
             }
             e.anchor = e.pos; return true;
         }
@@ -635,7 +693,8 @@ static bool handle(wint_t c, int type) {
         else if (iswprint(c)) { wchar_t s = (wchar_t)c; insert(&s, 1); return true; }
         else return true;
     }
-    if (c == KEY_F(3)) find_next(e.pos);
+    if (c == KEY_F(1)) return action(ABOUT);
+    else if (c == KEY_F(3)) find_next(e.pos);
     else if (c == KEY_F(10)) return action(menu(0));
     else if (c == K_COPY) copy_selection(false);
     else if (c == K_PASTE) return action(PASTE);
@@ -644,8 +703,8 @@ static bool handle(wint_t c, int type) {
     else if (c == KEY_RIGHT || c == KEY_SRIGHT) move_to(e.pos < e.n ? e.pos + 1 : e.n, c == KEY_SRIGHT, false);
     else if (c == KEY_UP || c == K_SUP || c == KEY_SR) vertical(-1, c != KEY_UP);
     else if (c == KEY_DOWN || c == K_SDOWN || c == KEY_SF) vertical(1, c != KEY_DOWN);
-    else if (c == KEY_PPAGE) vertical(-(LINES > 3 ? LINES - 3 : 1), false);
-    else if (c == KEY_NPAGE) vertical(LINES > 3 ? LINES - 3 : 1, false);
+    else if (c == KEY_PPAGE) vertical(-(LINES > 5 ? LINES - 5 : 1), false);
+    else if (c == KEY_NPAGE) vertical(LINES > 5 ? LINES - 5 : 1, false);
     else if (c == KEY_HOME || c == K_SHOME) move_to(line_start(e.pos), c == K_SHOME, false);
     else if (c == KEY_END || c == K_SEND) move_to(line_end(e.pos), c == K_SEND, false);
     else if (c == K_CTRLLEFT) {
@@ -660,10 +719,9 @@ static bool handle(wint_t c, int type) {
     else if (c == KEY_MOUSE) {
         MEVENT m; if (getmouse(&m) != OK) return true;
         if (m.y == 0 && (m.bstate & (BUTTON1_CLICKED | BUTTON1_PRESSED))) {
-            int which = m.x < 10 ? 0 : m.x < 20 ? 1 : m.x < 26 ? 2 : 3;
-            return action(menu(which));
+            return action(menu(menu_from_x(m.x)));
         }
-        if (m.y > 0 && m.y < LINES - 1) {
+        if (m.y >= EDIT_TOP && m.y < LINES - 2 && m.x >= EDIT_LEFT && m.x < COLS - 1) {
             size_t p = mouse_position(m.y, m.x);
             if (e.dragging && (m.bstate & REPORT_MOUSE_POSITION)) move_to(p, true, false);
             else if (m.bstate & (BUTTON1_PRESSED | BUTTON1_CLICKED)) {
@@ -690,12 +748,12 @@ int main(int argc, char **argv) {
     initscr(); screen_ready = true; atexit(cleanup);
     if (!has_colors()) die("se necesita una terminal con colores");
     raw(); noecho(); keypad(stdscr, TRUE); start_color();
-    if (COLOR_PAIRS <= SHADOW) die("la terminal no ofrece suficientes pares de color");
+    if (COLOR_PAIRS <= TITLE) die("la terminal no ofrece suficientes pares de color");
     short white = COLORS >= 16 ? 15 : COLOR_WHITE;
-    short blue = COLOR_BLUE, gray = COLOR_WHITE;
-    if (can_change_color() && COLORS >= 19) {
-        const short values[3][3] = {{0, 0, 667}, {1000, 1000, 1000}, {667, 667, 667}};
-        for (int i = 0; i < 3; ++i) {
+    short blue = COLOR_BLUE, gray = COLOR_WHITE, cyan = COLOR_CYAN;
+    if (can_change_color() && COLORS >= 20) {
+        const short values[4][3] = {{0, 0, 667}, {1000, 1000, 1000}, {667, 667, 667}, {0, 667, 667}};
+        for (int i = 0; i < 4; ++i) {
             short slot = (short)(16 + i), r, g, b;
             if (color_content(slot, &r, &g, &b) == ERR) break;
             palette_saved[palette_count][0] = slot;
@@ -705,11 +763,12 @@ int main(int argc, char **argv) {
             ++palette_count;
             init_color(slot, values[i][0], values[i][1], values[i][2]);
         }
-        if (palette_count == 3) { blue = 16; white = 17; gray = 18; }
+        if (palette_count == 4) { blue = 16; white = 17; gray = 18; cyan = 19; }
     }
-    init_pair(EDIT, white, blue); init_pair(BAR, COLOR_BLACK, white);
-    init_pair(SELECT, blue, white); init_pair(DIALOG, COLOR_BLACK, gray);
+    init_pair(EDIT, white, blue); init_pair(BAR, COLOR_BLACK, gray);
+    init_pair(SELECT, blue, gray); init_pair(DIALOG, COLOR_BLACK, gray);
     init_pair(BUTTON, COLOR_BLACK, white); init_pair(SHADOW, COLOR_BLACK, COLOR_BLACK);
+    init_pair(STATUS, COLOR_BLACK, cyan); init_pair(FRAME, gray, blue); init_pair(TITLE, COLOR_BLACK, white);
     define_key("\033[1;2A", K_SUP); define_key("\033[1;2B", K_SDOWN);
     define_key("\033[1;2D", KEY_SLEFT); define_key("\033[1;2C", KEY_SRIGHT);
     define_key("\033[2;5~", K_COPY); define_key("\033[2;2~", K_PASTE);

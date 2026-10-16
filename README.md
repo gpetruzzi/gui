@@ -8,11 +8,12 @@ La versión anterior de Rust permanece en `main`.
 
 ## Aspecto y controles
 
-- Fondo azul, texto blanco y barra superior blanca con letras negras.
+- Fondo azul y texto blanco, con marco fino y nombre de archivo centrado sobre una franja negra.
+- Barra de menús gris claro con letras negras; barra inferior turquesa en edición y gris en los diálogos y menús abiertos.
 - Sin números de línea y sin resaltar la línea donde está el cursor.
 - Solo la selección explícita cambia de color.
 - Diálogos clásicos grises con título claro, campos delimitados, casillas y botones con sombra de media celda.
-- Menús: Alt+A Archivo, Alt+E Edición, Alt+V Ver, Alt+Y Ayuda. F10 abre los menús.
+- Menús clásicos con borde y sombra: Alt+A Archivo, Alt+E Edición, Alt+B Buscar, Alt+V Ver, Alt+O Opciones y Alt+Y Ayuda. F10 abre los menús; F1 muestra la información de gui.
 - Ctrl+B Buscar; Ctrl+R Reemplazar; F3 busca la siguiente coincidencia.
 - Shift+flechas selecciona; Ctrl+A selecciona todo.
 - Ctrl+C / Ctrl+Insert copia; Ctrl+X corta; Ctrl+V / Shift+Insert pega.
