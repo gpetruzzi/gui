@@ -13,7 +13,7 @@ The `c-rewrite` branch contains new C code, not a translation of Microsoft Edit'
 - The compact Edit menu contains Cut, Copy, Paste and Clear, with gray unavailable commands, a black selection bar and a contextual description in the bottom bar. Clear deletes only the selection and keeps the internal clipboard unchanged. Undo, Redo and Select All remain available through their keyboard shortcuts.
 - No line numbers and no current-line highlight. Only explicitly selected text changes color.
 - Gray dialogs with white title strips, dotted input fields, checkboxes and white buttons with thin black shadows. Labels highlight their Alt access letter in white; button access letters are underlined in black for contrast against the white button face.
-- File and directory scrollbars use white arrows on black, a patterned track and a light proportional thumb. These styles are shared by all applicable dialogs.
+- File and directory scrollbars use white arrows on black, white stipple on a black track and a solid white proportional thumb. These styles are shared by all applicable dialogs and editor panels.
 - Open and Save As use a classic two-pane browser: File Name, current path, Existing Files and Directories, with OK, Cancel and Help buttons. Use Tab to move between controls, arrows to select an entry and Enter to enter a directory. Saving to another existing file asks before replacing it.
 - Open has a taller Files pane and a shorter Directories pane, followed by Open Read-only, Open Binary and Line Width. Read-only blocks edits and saving. Open Binary opens a **read-only hexadecimal view**, not a binary editor; Line Width is the number of source bytes per row (1–256, default 70). It is disabled for ordinary text files.
 

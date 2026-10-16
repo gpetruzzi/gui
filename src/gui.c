@@ -1127,7 +1127,9 @@ int main(int argc, char **argv) {
     init_pair(TITLE_RULE, white, blue);
     init_pair(MENU_ACTIVE, white, COLOR_BLACK); init_pair(DISABLED, dark_gray, gray);
     init_pair(HOTKEY, white, gray);
-    init_pair(SCROLL_ARROW, white, COLOR_BLACK); init_pair(SCROLL_TRACK, COLOR_BLACK, white);
+    init_pair(SCROLL_ARROW, white, COLOR_BLACK);
+    /* DOS-style track: white stipple on black, with a separate solid white thumb. */
+    init_pair(SCROLL_TRACK, white, COLOR_BLACK);
     init_pair(BUTTON_EDGE, COLOR_BLACK, gray);
     if (eight_colors) { init_pair(BUTTON, COLOR_WHITE, COLOR_BLACK); init_pair(TITLE, COLOR_WHITE, COLOR_BLACK); }
     theme_apply();
