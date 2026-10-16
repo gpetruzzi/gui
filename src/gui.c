@@ -1,4 +1,4 @@
-/* gui 1.0 -- independent C implementation of a classic terminal editor.
+/* gui 1.0.1 -- independent C implementation of a classic terminal editor.
  * SPDX-License-Identifier: GPL-3.0-or-later
  * Author: Guillermo Petruzzi
  * Copyright (c) 2026 Guillermo Petruzzi and gui contributors
@@ -789,7 +789,7 @@ static void about(void) {
     if (small_screen(9, 54)) return;
     Box b = box_open("About gui", 9, 54);
     attrset(COLOR_PAIR(DIALOG));
-    text_at(b.y + 2, b.x + 4, "gui 1.0", 45);
+    text_at(b.y + 2, b.x + 4, "gui 1.0.1", 45);
     text_at(b.y + 3, b.x + 4, "Author: Guillermo Petruzzi", 45);
     text_at(b.y + 4, b.x + 4, "License: GNU GPLv3 or later", 45);
     button(b, 6, 21, "OK", true); refresh();
@@ -1130,7 +1130,7 @@ static bool handle(wint_t c, int type) {
 #ifndef GUI_TEST
 int main(int argc, char **argv) {
     if (argc == 2 && (!strcmp(argv[1], "--version") || !strcmp(argv[1], "--help"))) {
-        puts("gui 1.0\nUsage: gui [file]\nCtrl+B Find | Ctrl+R Replace | Ctrl+S Save | Ctrl+Q Exit"); return 0;
+        puts("gui 1.0.1\nUsage: gui [file]\nCtrl+B Find | Ctrl+R Replace | Ctrl+S Save | Ctrl+Q Exit"); return 0;
     }
     if (argc > 2) { fputs("Usage: gui [file]\n", stderr); return 1; }
     if (!setlocale(LC_ALL, "" ) || MB_CUR_MAX < 4) die("A UTF-8 locale is required (for example LANG=C.UTF-8).");

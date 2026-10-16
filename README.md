@@ -1,4 +1,4 @@
-# gui 1.0
+# gui 1.0.1
 
 A Linux terminal text editor by **Guillermo Petruzzi**, with a classic DOS-style interface, keyboard shortcuts and mouse support.
 
@@ -175,3 +175,9 @@ You may use, modify and redistribute gui, including commercially. When distribut
 Previously published MIT versions retain their MIT permissions. The historical MIT notice is preserved in [LICENSES/MIT-legacy.txt](LICENSES/MIT-legacy.txt). External dependencies retain their own licenses.
 
 The About dialog identifies gui 1.0, its author Guillermo Petruzzi, and the GPL license.
+
+## Changes in 1.0.1
+
+Opening a file removes untouched empty Untitled documents, including when
+selecting a file that is already open. Documents containing text or edit
+history are preserved. Failed opens keep the empty document.

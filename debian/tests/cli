@@ -4,7 +4,7 @@ set -eu
 
 export LC_ALL=C.UTF-8
 version=$(/usr/bin/gui --version)
-printf '%s\n' "$version" | grep -Fx 'gui 1.0'
+printf '%s\n' "$version" | grep -Fx 'gui 1.0.1'
 help=$(/usr/bin/gui --help)
 printf '%s\n' "$help" | grep -Fx 'Usage: gui [file]'
 
