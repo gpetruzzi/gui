@@ -1015,7 +1015,7 @@ impl Tui {
                     };
                     self.framebuffer.blend_bg(header, StraightRgba::from_rgba(0xffffffff));
                     self.framebuffer.blend_fg(header, StraightRgba::from_rgba(0x000000ff));
-                    let title_width = unicode::MeasurementConfig::new(title.as_bytes())
+                    let title_width = unicode::MeasurementConfig::new(&title.as_bytes())
                         .goto_visual(Point { x: CoordType::MAX, y: 0 })
                         .visual_pos.x;
                     node.outer.left + ((node.outer.width() - title_width) / 2).max(0)
