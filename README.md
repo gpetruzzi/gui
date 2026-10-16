@@ -10,6 +10,7 @@ The `c-rewrite` branch contains new C code, not a translation of Microsoft Edit'
 - English interface: File, Edit, Search, View, Options and Help.
 - Blue editing area with white text, a thin frame, and a centered file name over a black title strip.
 - Light gray menu bar and bottom help bar with black text.
+- The compact Edit menu contains Cut, Copy, Paste and Clear, with gray unavailable commands, a black selection bar and a contextual description in the bottom bar. Clear deletes only the selection and keeps the internal clipboard unchanged. Undo, Redo and Select All remain available through their keyboard shortcuts.
 - No line numbers and no current-line highlight. Only explicitly selected text changes color.
 - Gray dialogs with white title strips, dotted input fields, checkboxes and white buttons with half-cell black shadows.
 - Open and Save As use a classic two-pane browser: File Name, current path, Existing Files and Directories, with OK, Cancel and Help buttons. Use Tab to move between controls, arrows to select an entry and Enter to enter a directory. Saving to another existing file asks before replacing it.

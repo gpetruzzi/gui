@@ -131,6 +131,21 @@ static void test_read_only_and_binary_view(void) {
     document(L"editable"); assert(!e.read_only && !e.binary_view);
     assert(unlink(path) == 0);
 }
+static void test_edit_menu_commands(void) {
+    document(L"abc");
+    free(e.clip); e.clip = NULL; e.clip_n = 0;
+    assert(!action_enabled(CUT) && !action_enabled(COPY) && !action_enabled(PASTE) && !action_enabled(CLEAR));
+    e.anchor = 0; e.pos = 1; copy_selection(false);
+    e.anchor = 1; e.pos = 3;
+    assert(action_enabled(CUT) && action_enabled(COPY) && action_enabled(PASTE) && action_enabled(CLEAR));
+    action(CLEAR);
+    assert(!wcscmp(e.s, L"a") && !wcscmp(e.clip, L"a"));
+    undo_redo(false); assert(!wcscmp(e.s, L"abc"));
+    e.read_only = true;
+    assert(action_enabled(COPY) && !action_enabled(CUT) && !action_enabled(PASTE) && !action_enabled(CLEAR));
+    action(CLEAR); assert(!wcscmp(e.s, L"abc"));
+    document(L"");
+}
 int main(void) {
     assert(setlocale(LC_ALL, "C.UTF-8"));
     e.s = copy_text(L"", 0); e.saved = copy_text(L"", 0); e.preferred = -1;
@@ -138,6 +153,7 @@ int main(void) {
     test_lines_and_history_limit(); test_utf8_and_disk();
     test_file_picker_lists();
     test_read_only_and_binary_view();
+    test_edit_menu_commands();
     free(e.s); free(e.saved); free(e.path); free(e.clip);
     clear_history(e.undo, &e.un); clear_history(e.redo, &e.rn);
     puts("Core tests: OK"); return 0;

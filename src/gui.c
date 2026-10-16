@@ -32,7 +32,7 @@
 #define K_PASTEBEGIN (KEY_MAX + 9)
 #define K_PASTEEND (KEY_MAX + 10)
 
-enum { EDIT = 1, BAR, SELECT, DIALOG, BUTTON, SHADOW, STATUS, FRAME, TITLE };
+enum { EDIT = 1, BAR, SELECT, DIALOG, BUTTON, SHADOW, STATUS, FRAME, TITLE, MENU_ACTIVE, DISABLED };
 #define EDIT_TOP 2
 #define EDIT_LEFT 1
 static const char *menu_names[] = {"File", "Edit", "Search", "View", "Options", "Help"};
@@ -54,7 +54,7 @@ static Editor e;
 typedef struct { bool read_only, binary; unsigned line_width; } OpenOptions;
 static OpenOptions open_options = {false, false, 70};
 static bool screen_ready;
-static short palette_saved[3][4];
+static short palette_saved[4][4];
 static int palette_count;
 
 static void cleanup(void) {
@@ -593,13 +593,28 @@ static void about(void) {
     button(b, 6, 21, "OK", true); refresh();
     wint_t c; key(&c);
 }
-enum { NONE, NEW, OPEN, SAVE, QUIT, UNDO, REDO, COPY, CUT, PASTE, FIND, REPLACE, SELECT_ALL, ABOUT, NEXT, CASE, WHOLE, SAVE_AS };
+enum { NONE, NEW, OPEN, SAVE, QUIT, UNDO, REDO, COPY, CUT, PASTE, FIND, REPLACE, SELECT_ALL, ABOUT, NEXT, CASE, WHOLE, SAVE_AS, CLEAR };
+static bool action_enabled(int a) {
+    bool selection = e.pos != e.anchor;
+    if (a == NONE) return false;
+    if (a == COPY) return selection;
+    if (a == CUT || a == CLEAR) return selection && !e.read_only;
+    if (a == PASTE) return e.clip_n != 0 && !e.read_only;
+    if (a == SAVE || a == SAVE_AS || a == REPLACE) return !e.read_only;
+    return true;
+}
+static const char *edit_hint(int a) {
+    if (a == CUT) return "Deletes selected text and copies it to the Clipboard.";
+    if (a == COPY) return "Copies selected text to the Clipboard.";
+    if (a == PASTE) return "Inserts the Clipboard text at the cursor.";
+    return "Deletes selected text without changing the Clipboard.";
+}
 static int menu(int which) {
 restart:;
     const char *file[] = {"New            Ctrl+N", "Open           Ctrl+O", "Save           Ctrl+S", "Save As...", "Exit           Ctrl+Q"};
     const int fa[] = {NEW, OPEN, SAVE, SAVE_AS, QUIT};
-    const char *edit[] = {"Undo           Ctrl+Z", "Redo           Ctrl+Y", "Copy           Ctrl+C", "Cut            Ctrl+X", "Paste          Ctrl+V", "Find           Ctrl+B", "Replace        Ctrl+R", "Select All     Ctrl+A"};
-    const int ea[] = {UNDO, REDO, COPY, CUT, PASTE, FIND, REPLACE, SELECT_ALL};
+    const char *edit[] = {"Cut       Ctrl+X", "Copy      Ctrl+C", "Paste     Ctrl+V", "Clear        Del"};
+    const int ea[] = {CUT, COPY, PASTE, CLEAR};
     const char *search[] = {"Find           Ctrl+B", "Replace        Ctrl+R", "Find Next      F3"};
     const int sa[] = {FIND, REPLACE, NEXT};
     const char *view[] = {"Line Numbers: Off", "Line Highlight: Off"};
@@ -609,43 +624,61 @@ restart:;
     const char *help[] = {"About gui"}; const int ha[] = {ABOUT};
     const char **labels = which == 0 ? file : which == 1 ? edit : which == 2 ? search : which == 3 ? view : which == 4 ? options : help;
     const int *actions = which == 0 ? fa : which == 1 ? ea : which == 2 ? sa : which == 3 ? va : which == 4 ? oa : ha;
-    int count = which == 0 ? 5 : which == 1 ? 8 : which == 2 ? 3 : which == 5 ? 1 : 2;
-    if (small_screen(count + 3, 29)) return NONE;
+    int count = which == 0 ? 5 : which == 1 ? 4 : which == 2 ? 3 : which == 5 ? 1 : 2;
+    int panel_width = which == 1 ? 20 : 28;
+    if (small_screen(count + 3, panel_width + 1)) return NONE;
     int selected = 0, x = menu_x[which];
-    if (x + 29 > COLS) x = COLS - 29;
+    for (int i = 0; i < count; ++i) if (action_enabled(actions[i])) { selected = i; break; }
+    if (x + panel_width + 1 > COLS) x = COLS - panel_width - 1;
     for (;;) {
         draw(); curs_set(0);
-        mvchgat(0, menu_x[which], menu_width[which], A_NORMAL, SELECT, NULL);
-        footer("F1=Help  Enter=Execute  Esc=Cancel  Left/Right=Next Menu");
+        mvchgat(0, menu_x[which], menu_width[which], A_NORMAL, MENU_ACTIVE, NULL);
+        footer(which == 1 ? edit_hint(actions[selected]) : "F1=Help  Enter=Execute  Esc=Cancel  Left/Right=Next Menu");
         mvchgat(LINES - 1, 0, COLS, A_NORMAL, BAR, NULL);
         attrset(COLOR_PAIR(SHADOW));
-        for (int y = 2; y <= count + 3; ++y) mvhline(y, x + 1, ' ', 28);
+        for (int y = 2; y <= count + 3; ++y) mvhline(y, x + 1, ' ', panel_width);
         attrset(COLOR_PAIR(DIALOG));
-        for (int y = 1; y <= count + 2; ++y) mvhline(y, x, ' ', 28);
-        for (int col = 1; col < 27; ++col) { wide_at(1, x + col, L'─'); wide_at(count + 2, x + col, L'─'); }
-        wide_at(1, x, L'┌'); wide_at(1, x + 27, L'┐');
-        wide_at(count + 2, x, L'└'); wide_at(count + 2, x + 27, L'┘');
+        for (int y = 1; y <= count + 2; ++y) mvhline(y, x, ' ', panel_width);
+        for (int col = 1; col < panel_width - 1; ++col) { wide_at(1, x + col, L'─'); wide_at(count + 2, x + col, L'─'); }
+        wide_at(1, x, L'┌'); wide_at(1, x + panel_width - 1, L'┐');
+        wide_at(count + 2, x, L'└'); wide_at(count + 2, x + panel_width - 1, L'┘');
         for (int i = 0; i < count; ++i) {
             attrset(COLOR_PAIR(DIALOG));
-            wide_at(i + 2, x, L'│'); wide_at(i + 2, x + 27, L'│');
-            attrset(COLOR_PAIR(i == selected ? SELECT : DIALOG));
-            mvhline(i + 2, x + 1, ' ', 26); text_at(i + 2, x + 2, labels[i], 24);
+            wide_at(i + 2, x, L'│'); wide_at(i + 2, x + panel_width - 1, L'│');
+            bool enabled = action_enabled(actions[i]);
+            attrset(COLOR_PAIR(!enabled ? DISABLED : i == selected ? MENU_ACTIVE : DIALOG));
+            mvhline(i + 2, x + 1, ' ', panel_width - 2); text_at(i + 2, x + 2, labels[i], panel_width - 4);
             if (which == 4 && ((i == 0 && e.match_case) || (i == 1 && e.whole_word)))
                 mvaddch(i + 2, x + 26, '*');
         }
         refresh(); wint_t c; int t = key(&c); if (t == ERR) continue;
         if (c == 27 || (t == KEY_CODE_YES && c == KEY_RESIZE)) return NONE;
-        if (t == KEY_CODE_YES && c == KEY_UP) selected = (selected + count - 1) % count;
-        else if (t == KEY_CODE_YES && c == KEY_DOWN) selected = (selected + 1) % count;
+        if (t == KEY_CODE_YES && (c == KEY_UP || c == KEY_DOWN)) {
+            int direction = c == KEY_UP ? count - 1 : 1;
+            for (int i = 0; i < count; ++i) {
+                selected = (selected + direction) % count;
+                if (action_enabled(actions[selected])) break;
+            }
+        }
         else if (t == KEY_CODE_YES && c == KEY_LEFT) { which = (which + 5) % 6; goto restart; }
         else if (t == KEY_CODE_YES && c == KEY_RIGHT) { which = (which + 1) % 6; goto restart; }
         else if (t == KEY_CODE_YES && c == KEY_MOUSE) {
             MEVENT m; if (getmouse(&m) == OK && (m.bstate & (BUTTON1_CLICKED | BUTTON1_PRESSED))) {
                 if (m.y == 0) { which = menu_from_x(m.x); goto restart; }
-                if (m.y >= 2 && m.y <= count + 1 && m.x > x && m.x < x + 27) return actions[m.y - 2];
+                if (m.y >= 2 && m.y <= count + 1 && m.x > x && m.x < x + panel_width - 1) {
+                    int chosen = actions[m.y - 2];
+                    if (action_enabled(chosen)) return chosen;
+                    continue;
+                }
                 return NONE;
             }
-        } else if (c == '\n' || c == '\r' || (t == KEY_CODE_YES && c == KEY_ENTER)) return actions[selected];
+        } else if (c == '\n' || c == '\r' || (t == KEY_CODE_YES && c == KEY_ENTER)) {
+            if (action_enabled(actions[selected])) return actions[selected];
+        } else if (which == 1) {
+            int chosen = c == CTRL('x') ? CUT : c == CTRL('c') ? COPY : c == CTRL('v') ? PASTE :
+                         t == KEY_CODE_YES && c == KEY_DC ? CLEAR : NONE;
+            if (action_enabled(chosen)) return chosen;
+        }
     }
 }
 static bool action(int a) {
@@ -660,6 +693,9 @@ static bool action(int a) {
     else if (a == REDO) undo_redo(true);
     else if (a == COPY) copy_selection(false);
     else if (a == CUT) copy_selection(true);
+    else if (a == CLEAR && action_enabled(CLEAR)) {
+        size_t start, end; range(&start, &end); checkpoint(); splice(start, end, L"", 0);
+    }
     else if (a == PASTE && e.clip_n) insert(e.clip, e.clip_n);
     else if (a == FIND) search_dialog(false);
     else if (a == REPLACE) search_dialog(true);
@@ -783,12 +819,12 @@ int main(int argc, char **argv) {
     initscr(); screen_ready = true; atexit(cleanup);
     if (!has_colors()) die("A color terminal is required.");
     raw(); noecho(); keypad(stdscr, TRUE); start_color();
-    if (COLOR_PAIRS <= TITLE) die("The terminal does not provide enough color pairs.");
+    if (COLOR_PAIRS <= DISABLED) die("The terminal does not provide enough color pairs.");
     short white = COLORS >= 16 ? 15 : COLOR_WHITE;
-    short blue = COLOR_BLUE, gray = COLOR_WHITE;
-    if (can_change_color() && COLORS >= 19) {
-        const short values[3][3] = {{0, 0, 667}, {1000, 1000, 1000}, {667, 667, 667}};
-        for (int i = 0; i < 3; ++i) {
+    short blue = COLOR_BLUE, gray = COLOR_WHITE, dark_gray = COLORS >= 16 ? 8 : COLOR_BLACK;
+    if (can_change_color() && COLORS >= 20) {
+        const short values[4][3] = {{0, 0, 667}, {1000, 1000, 1000}, {667, 667, 667}, {333, 333, 333}};
+        for (int i = 0; i < 4; ++i) {
             short slot = (short)(16 + i), r, g, b;
             if (color_content(slot, &r, &g, &b) == ERR) break;
             palette_saved[palette_count][0] = slot;
@@ -798,12 +834,13 @@ int main(int argc, char **argv) {
             ++palette_count;
             init_color(slot, values[i][0], values[i][1], values[i][2]);
         }
-        if (palette_count == 3) { blue = 16; white = 17; gray = 18; }
+        if (palette_count == 4) { blue = 16; white = 17; gray = 18; dark_gray = 19; }
     }
     init_pair(EDIT, white, blue); init_pair(BAR, COLOR_BLACK, gray);
     init_pair(SELECT, blue, gray); init_pair(DIALOG, COLOR_BLACK, gray);
     init_pair(BUTTON, COLOR_BLACK, white); init_pair(SHADOW, COLOR_BLACK, COLOR_BLACK);
     init_pair(STATUS, COLOR_BLACK, gray); init_pair(FRAME, gray, blue); init_pair(TITLE, COLOR_BLACK, white);
+    init_pair(MENU_ACTIVE, white, COLOR_BLACK); init_pair(DISABLED, dark_gray, gray);
     define_key("\033[1;2A", K_SUP); define_key("\033[1;2B", K_SDOWN);
     define_key("\033[1;2D", KEY_SLEFT); define_key("\033[1;2C", KEY_SRIGHT);
     define_key("\033[2;5~", K_COPY); define_key("\033[2;2~", K_PASTE);
