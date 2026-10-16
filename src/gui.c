@@ -1,6 +1,7 @@
 /* gui 0.1.0 -- independent C implementation of a classic terminal editor.
  * SPDX-License-Identifier: GPL-3.0-or-later
- * Copyright (c) 2026 gui contributors
+ * Author: Guillermo Petruzzi
+ * Copyright (c) 2026 Guillermo Petruzzi and gui contributors
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -783,7 +784,8 @@ static void about(void) {
     attrset(COLOR_PAIR(DIALOG));
     text_at(b.y + 2, b.x + 4, "gui 0.1.0 - C edition", 45);
     text_at(b.y + 3, b.x + 4, "Original code. Interface with ncursesw.", 45);
-    text_at(b.y + 4, b.x + 4, "A project by gpetruzzi. GPLv3 or later.", 45);
+    text_at(b.y + 4, b.x + 4, "Author: Guillermo Petruzzi", 45);
+    text_at(b.y + 5, b.x + 4, "License: GNU GPLv3 or later", 45);
     button(b, 6, 21, "OK", true); refresh();
     for (;;) {
         wint_t c; int type = dialog_key(&c);

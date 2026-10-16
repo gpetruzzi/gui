@@ -1,4 +1,7 @@
-/* Documents, split views and preferences. SPDX-License-Identifier: GPL-3.0-or-later */
+/* Documents, split views and preferences. SPDX-License-Identifier: GPL-3.0-or-later
+ * Author: Guillermo Petruzzi
+ * Copyright (c) 2026 Guillermo Petruzzi and gui contributors
+ */
 static void pane_capture(void) {
     panes[active_pane] = (Pane){active_document, e.pos, e.anchor, e.top, e.left};
 }

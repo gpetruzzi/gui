@@ -1,6 +1,6 @@
 # Licensing of gui
 
-Copyright (c) 2026 gui contributors.
+Copyright (c) 2026 Guillermo Petruzzi and gui contributors.
 
 Starting with the commit introducing this notice, the current gui project is
 distributed under the GNU General Public License, version 3 or, at your

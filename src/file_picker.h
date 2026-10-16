@@ -1,5 +1,7 @@
 /* Classic two-pane file dialog for gui. SPDX-License-Identifier: GPL-3.0-or-later
  * Included after the editor's dialog and text-field helpers.
+ * Author: Guillermo Petruzzi
+ * Copyright (c) 2026 Guillermo Petruzzi and gui contributors
  */
 #include <dirent.h>
 #include <strings.h>
