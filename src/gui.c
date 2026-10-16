@@ -427,9 +427,10 @@ static void button(Box b, int y, int x, const char *label, bool active) {
     for (int i = 1; i <= len + 2; ++i) wide_at(b.y + y + 1, b.x + x + i, L'\u2580');
     wide_at(b.y + y, b.x + x + len + 2, L'\u2584');
     attrset(control_attrs(BUTTON));
-    wide_at(b.y + y, b.x + x, active ? L'\u25b6' : L' ');
+    /* ASCII arrows remain visible when the terminal font lacks triangles. */
+    mvaddch(b.y + y, b.x + x, active ? '>' : ' ');
     text_at(b.y + y, b.x + x + 1, label, len);
-    wide_at(b.y + y, b.x + x + len + 1, active ? L'\u25c0' : L' ');
+    mvaddch(b.y + y, b.x + x + len + 1, active ? '<' : ' ');
     int accelerator = 0;
     while (label[accelerator] == ' ') ++accelerator;
     if (label[accelerator]) {
