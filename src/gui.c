@@ -59,7 +59,7 @@ static int palette_count;
 
 static void cleanup(void) {
     if (!screen_ready) return;
-    printf("\033[?2004l"); fflush(stdout);
+    printf("\033[?1002l\033[?2004l"); fflush(stdout);
     for (int i = 0; i < palette_count; ++i)
         init_color(palette_saved[i][0], palette_saved[i][1], palette_saved[i][2], palette_saved[i][3]);
     endwin(); screen_ready = false;
@@ -145,9 +145,11 @@ static void insert(const wchar_t *s, size_t n) {
 }
 static void copy_selection(bool cut) {
     size_t a, b; range(&a, &b);
-    if (a == b) return;
+    if (a == b) { message("No text selected."); return; }
     free(e.clip); e.clip = copy_text(e.s + a, b - a); e.clip_n = b - a;
     if (cut && can_edit()) { checkpoint(); splice(a, b, L"", 0); }
+    if (!cut || !e.read_only)
+        snprintf(e.message, sizeof e.message, "%s %zu characters to the gui clipboard.", cut ? "Cut" : "Copied", e.clip_n);
 }
 static size_t line_start(size_t p) { while (p && e.s[p - 1] != L'\n') --p; return p; }
 static size_t line_end(size_t p) { while (p < e.n && e.s[p] != L'\n') ++p; return p; }
@@ -402,7 +404,7 @@ static void reset_document(wchar_t *s, size_t n, char *path, bool crlf, bool bom
     free(e.s); free(e.saved); free(e.path);
     e.s = s; e.n = n; e.path = path; e.saved = copy_text(s, n);
     e.pos = e.anchor = e.top = 0; e.left = 0; e.preferred = -1; e.crlf = crlf; e.bom = bom;
-    e.read_only = e.binary_view = false;
+    e.read_only = e.binary_view = e.dragging = false;
     clear_history(e.undo, &e.un); clear_history(e.redo, &e.rn);
 }
 static wchar_t *hex_document(const unsigned char *bytes, size_t n, unsigned width, size_t *length) {
@@ -722,6 +724,20 @@ static size_t mouse_position(int y, int x) {
     for (int i = EDIT_TOP; i < y && p < e.n; ++i) { size_t end = line_end(p); p = end < e.n ? end + 1 : end; }
     return at_column(p, x - EDIT_LEFT + e.left);
 }
+/* Motion can arrive as repeated PRESSED events rather than REPORT_MOUSE_POSITION.
+ * Keep the anchor until release; a combined CLICKED event is never a drag. */
+static void mouse_select(size_t position, mmask_t flags) {
+    if (flags & BUTTON1_RELEASED) {
+        if (e.dragging) move_to(position, true, false);
+        e.dragging = false;
+    } else if (flags & BUTTON1_CLICKED) {
+        move_to(position, (flags & BUTTON_SHIFT) != 0, false);
+        e.dragging = false;
+    } else if (flags & BUTTON1_PRESSED) {
+        if (e.dragging) move_to(position, true, false);
+        else { move_to(position, (flags & BUTTON_SHIFT) != 0, false); e.dragging = true; }
+    } else if (e.dragging && (flags & REPORT_MOUSE_POSITION)) move_to(position, true, false);
+}
 static void bracketed_paste(void) {
     size_t n = 0, cap = 256; wchar_t *s = alloc(cap * sizeof(*s));
     bool previous_cr = false;
@@ -741,6 +757,7 @@ static void bracketed_paste(void) {
     insert(s, n); free(s);
 }
 static bool handle(wint_t c, int type) {
+    if (type != KEY_CODE_YES || c != KEY_MOUSE) e.dragging = false;
     if (type != KEY_CODE_YES) {
         if (c == CTRL('q')) return action(QUIT);
         if (c == CTRL('n')) return action(NEW);
@@ -799,19 +816,34 @@ static bool handle(wint_t c, int type) {
     } else if (c == KEY_ENTER) insert(L"\n", 1);
     else if (c == KEY_MOUSE) {
         MEVENT m; if (getmouse(&m) != OK) return true;
+        if (e.dragging && (m.bstate & (BUTTON1_PRESSED | BUTTON1_RELEASED | REPORT_MOUSE_POSITION))) {
+            if (LINES < 5 || COLS < 3) { e.dragging = false; return true; }
+            int y = m.y, x = m.x;
+            if (y < EDIT_TOP) {
+                if (e.top) e.top = line_start(e.top - 1);
+                y = EDIT_TOP;
+            } else if (y >= LINES - 2) {
+                size_t end = line_end(e.top);
+                if (end < e.n) e.top = end + 1;
+                y = LINES - 3;
+            }
+            if (x < EDIT_LEFT) { if (e.left) --e.left; x = EDIT_LEFT; }
+            else if (x >= COLS - 1) { if (e.left < INT_MAX - COLS) ++e.left; x = COLS - 2; }
+            mouse_select(mouse_position(y, x), m.bstate);
+            return true;
+        }
+        /* A release outside the document must end the gesture too. */
+        if (m.bstate & BUTTON1_RELEASED) { e.dragging = false; return true; }
         if (m.y == 0 && (m.bstate & (BUTTON1_CLICKED | BUTTON1_PRESSED))) {
+            e.dragging = false;
             return action(menu(menu_from_x(m.x)));
         }
         if (m.y >= EDIT_TOP && m.y < LINES - 2 && m.x >= EDIT_LEFT && m.x < COLS - 1) {
             size_t p = mouse_position(m.y, m.x);
-            if (e.dragging && (m.bstate & REPORT_MOUSE_POSITION)) move_to(p, true, false);
-            else if (m.bstate & (BUTTON1_PRESSED | BUTTON1_CLICKED)) {
-                move_to(p, (m.bstate & BUTTON_SHIFT) != 0, false); e.dragging = true;
-            }
-            if (m.bstate & BUTTON1_RELEASED) { if (e.dragging) move_to(p, true, false); e.dragging = false; }
-            if (m.bstate & BUTTON4_PRESSED) vertical(-3, false);
+            mouse_select(p, m.bstate);
+            if (m.bstate & BUTTON4_PRESSED) vertical(-3, e.dragging);
 #ifdef BUTTON5_PRESSED
-            if (m.bstate & BUTTON5_PRESSED) vertical(3, false);
+            if (m.bstate & BUTTON5_PRESSED) vertical(3, e.dragging);
 #endif
         }
     }
@@ -859,7 +891,8 @@ int main(int argc, char **argv) {
     define_key("\033[1;5D", K_CTRLLEFT); define_key("\033[1;5C", K_CTRLRIGHT);
     define_key("\033[200~", K_PASTEBEGIN); define_key("\033[201~", K_PASTEEND);
     mousemask(ALL_MOUSE_EVENTS | REPORT_MOUSE_POSITION, NULL); mouseinterval(0);
-    printf("\033[?2004h"); fflush(stdout);
+    /* Ask compatible terminals for button-motion events, not just clicks. */
+    printf("\033[?1003l\033[?1002h\033[?2004h"); fflush(stdout);
     bool running = true;
     while (running) {
         draw(); wint_t c; int t = key(&c); if (t == ERR) continue;

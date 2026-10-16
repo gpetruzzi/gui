@@ -146,6 +146,34 @@ static void test_edit_menu_commands(void) {
     action(CLEAR); assert(!wcscmp(e.s, L"abc"));
     document(L"");
 }
+static void test_mouse_drag_copy_paste(void) {
+    document(L"abcdef\nxyz");
+    mouse_select(1, BUTTON1_PRESSED);
+    assert(e.dragging && e.anchor == 1 && e.pos == 1);
+    /* Some terminals report held-button motion as another PRESSED event. */
+    mouse_select(3, BUTTON1_PRESSED);
+    assert(e.anchor == 1 && e.pos == 3);
+    mouse_select(4, REPORT_MOUSE_POSITION);
+    assert(e.anchor == 1 && e.pos == 4);
+    mouse_select(5, BUTTON1_RELEASED);
+    assert(!e.dragging && e.anchor == 1 && e.pos == 5);
+    copy_selection(false); assert(e.clip_n == 4 && !wcscmp(e.clip, L"bcde"));
+    move_to(e.n, false, false); action(PASTE);
+    assert(!wcscmp(e.s, L"abcdef\nxyzbcde"));
+    undo_redo(false); assert(!wcscmp(e.s, L"abcdef\nxyz"));
+    mouse_select(4, BUTTON1_PRESSED); mouse_select(1, BUTTON1_PRESSED);
+    mouse_select(2, BUTTON1_RELEASED);
+    copy_selection(false); assert(!wcscmp(e.clip, L"cd"));
+    e.anchor = 1; e.pos = 2;
+    mouse_select(4, BUTTON1_CLICKED | BUTTON_SHIFT);
+    assert(e.anchor == 1 && e.pos == 4 && !e.dragging);
+    mouse_select(6, REPORT_MOUSE_POSITION); assert(e.pos == 4);
+    e.dragging = true; assert(handle(CTRL('c'), OK));
+    assert(!e.dragging && !wcscmp(e.clip, L"bcd"));
+    mouse_select(0, BUTTON1_CLICKED);
+    assert(e.pos == 0 && e.anchor == 0 && !e.dragging);
+    document(L"");
+}
 int main(void) {
     assert(setlocale(LC_ALL, "C.UTF-8"));
     e.s = copy_text(L"", 0); e.saved = copy_text(L"", 0); e.preferred = -1;
@@ -154,6 +182,7 @@ int main(void) {
     test_file_picker_lists();
     test_read_only_and_binary_view();
     test_edit_menu_commands();
+    test_mouse_drag_copy_paste();
     free(e.s); free(e.saved); free(e.path); free(e.clip);
     clear_history(e.undo, &e.un); clear_history(e.redo, &e.rn);
     puts("Core tests: OK"); return 0;

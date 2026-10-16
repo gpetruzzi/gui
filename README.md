@@ -42,6 +42,8 @@ The terminal font controls the exact appearance of characters and shadows.
 
 The clipboard is internal in this prototype. To paste from another application, use your terminal's paste command (usually Ctrl+Shift+V). Bracketed terminal paste is supported in the document. Some terminals intercept Ctrl+Insert or Shift+Insert.
 
+To copy with the mouse, hold the left button and drag, release it, press Ctrl+C or choose Edit → Copy, then use Ctrl+V inside gui. The status bar reports the number of characters copied to gui's internal clipboard. Copying without a selection reports "No text selected." Drag handling preserves its anchor across repeated held-button events and ends on release, including outside the document.
+
 Use Tab and Shift+Tab to move between dialog controls, Space to toggle checkboxes, Enter to activate a control, and Esc to cancel. The mouse can place the cursor, select text, open menus and activate search dialog controls.
 
 ## Build separately on Debian or Ubuntu
