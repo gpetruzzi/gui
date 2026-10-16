@@ -600,6 +600,7 @@ static bool action_enabled(int a) {
     if (a == COPY) return selection;
     if (a == CUT || a == CLEAR) return selection && !e.read_only;
     if (a == PASTE) return e.clip_n != 0 && !e.read_only;
+    if (a == NEXT) return e.needle[0] != 0;
     if (a == SAVE || a == SAVE_AS || a == REPLACE) return !e.read_only;
     return true;
 }
@@ -609,14 +610,19 @@ static const char *edit_hint(int a) {
     if (a == PASTE) return "Inserts the Clipboard text at the cursor.";
     return "Deletes selected text without changing the Clipboard.";
 }
+static const char *search_hint(int a) {
+    if (a == FIND) return "Finds specified text.";
+    if (a == NEXT) return "Repeats the last search.";
+    return "Replaces specified text.";
+}
 static int menu(int which) {
 restart:;
     const char *file[] = {"New            Ctrl+N", "Open           Ctrl+O", "Save           Ctrl+S", "Save As...", "Exit           Ctrl+Q"};
     const int fa[] = {NEW, OPEN, SAVE, SAVE_AS, QUIT};
     const char *edit[] = {"Cut       Ctrl+X", "Copy      Ctrl+C", "Paste     Ctrl+V", "Clear        Del"};
     const int ea[] = {CUT, COPY, PASTE, CLEAR};
-    const char *search[] = {"Find           Ctrl+B", "Replace        Ctrl+R", "Find Next      F3"};
-    const int sa[] = {FIND, REPLACE, NEXT};
+    const char *search[] = {"Find...", "Repeat Last Find      F3", "Replace..."};
+    const int sa[] = {FIND, NEXT, REPLACE};
     const char *view[] = {"Line Numbers: Off", "Line Highlight: Off"};
     const int va[] = {NONE, NONE};
     const char *options[] = {"Match Case", "Match Whole Word Only"};
@@ -633,7 +639,8 @@ restart:;
     for (;;) {
         draw(); curs_set(0);
         mvchgat(0, menu_x[which], menu_width[which], A_NORMAL, MENU_ACTIVE, NULL);
-        footer(which == 1 ? edit_hint(actions[selected]) : "F1=Help  Enter=Execute  Esc=Cancel  Left/Right=Next Menu");
+        footer(which == 1 ? edit_hint(actions[selected]) : which == 2 ? search_hint(actions[selected]) :
+               "F1=Help  Enter=Execute  Esc=Cancel  Left/Right=Next Menu");
         mvchgat(LINES - 1, 0, COLS, A_NORMAL, BAR, NULL);
         attrset(COLOR_PAIR(SHADOW));
         for (int y = 2; y <= count + 3; ++y) mvhline(y, x + 1, ' ', panel_width);
@@ -677,6 +684,10 @@ restart:;
         } else if (which == 1) {
             int chosen = c == CTRL('x') ? CUT : c == CTRL('c') ? COPY : c == CTRL('v') ? PASTE :
                          t == KEY_CODE_YES && c == KEY_DC ? CLEAR : NONE;
+            if (action_enabled(chosen)) return chosen;
+        } else if (which == 2) {
+            int chosen = c == CTRL('b') ? FIND : c == CTRL('r') ? REPLACE :
+                         t == KEY_CODE_YES && c == KEY_F(3) ? NEXT : NONE;
             if (action_enabled(chosen)) return chosen;
         }
     }
