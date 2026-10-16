@@ -45,7 +45,7 @@ static void test_lines_and_history_limit(void) {
     assert(mouse_position(EDIT_TOP, EDIT_LEFT) == 0);
     assert(mouse_position(EDIT_TOP, EDIT_LEFT + 1) == 1);
     assert(mouse_position(EDIT_TOP + 1, EDIT_LEFT + 2) == 5);
-    assert(menu_from_x(1) == 0 && menu_from_x(22) == 2 && menu_from_x(50) == 5);
+    assert(menu_from_x(1) == 0 && menu_from_x(13) == 2 && menu_from_x(36) == 5);
     e.pos = e.anchor = 2;
     vertical(1, true);
     assert(e.anchor == 2 && e.pos == 5);
@@ -87,6 +87,6 @@ int main(void) {
     test_lines_and_history_limit(); test_utf8_and_disk();
     free(e.s); free(e.saved); free(e.path); free(e.clip);
     clear_history(e.undo, &e.un); clear_history(e.redo, &e.rn);
-    puts("Pruebas del núcleo: OK"); return 0;
+    puts("Core tests: OK"); return 0;
 }
 

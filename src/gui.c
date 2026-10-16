@@ -35,9 +35,9 @@
 enum { EDIT = 1, BAR, SELECT, DIALOG, BUTTON, SHADOW, STATUS, FRAME, TITLE };
 #define EDIT_TOP 2
 #define EDIT_LEFT 1
-static const char *menu_names[] = {"Archivo", "Edición", "Buscar", "Ver", "Opciones", "Ayuda"};
-static const int menu_x[] = {1, 11, 22, 31, 38, 49};
-static const int menu_width[] = {7, 7, 6, 3, 8, 5};
+static const char *menu_names[] = {"File", "Edit", "Search", "View", "Options", "Help"};
+static const int menu_x[] = {1, 7, 13, 21, 27, 36};
+static const int menu_width[] = {4, 4, 6, 4, 7, 4};
 typedef struct { wchar_t *s; size_t n, pos, anchor; } Snapshot;
 typedef struct {
     wchar_t *s, *saved, *clip;
@@ -52,7 +52,7 @@ typedef struct {
 } Editor;
 static Editor e;
 static bool screen_ready;
-static short palette_saved[4][4];
+static short palette_saved[3][4];
 static int palette_count;
 
 static void cleanup(void) {
@@ -70,11 +70,11 @@ static void die(const char *msg) {
 }
 static void *alloc(size_t n) {
     void *p = malloc(n ? n : 1);
-    if (!p) die("memoria insuficiente");
+    if (!p) die("Out of memory.");
     return p;
 }
 static wchar_t *copy_text(const wchar_t *s, size_t n) {
-    if (n > SIZE_MAX / sizeof(wchar_t) - 1) die("archivo demasiado grande");
+    if (n > SIZE_MAX / sizeof(wchar_t) - 1) die("File is too large.");
     wchar_t *p = alloc((n + 1) * sizeof(*p));
     if (n) memcpy(p, s, n * sizeof(*p));
     p[n] = 0;
@@ -119,10 +119,10 @@ static void range(size_t *a, size_t *b) {
 }
 /* The caller owns the undo checkpoint. Inserted text must not alias e.s. */
 static void splice(size_t a, size_t b, const wchar_t *s, size_t n) {
-    if (a > b || b > e.n || n > SIZE_MAX - (e.n - (b - a))) die("rango inválido");
+    if (a > b || b > e.n || n > SIZE_MAX - (e.n - (b - a))) die("Invalid editing range.");
     size_t len = e.n - (b - a) + n;
     wchar_t *p;
-    if (len > SIZE_MAX / sizeof(*p) - 1) die("archivo demasiado grande");
+    if (len > SIZE_MAX / sizeof(*p) - 1) die("File is too large.");
     p = alloc((len + 1) * sizeof(*p));
     memcpy(p, e.s, a * sizeof(*p));
     if (n) memcpy(p + a, s, n * sizeof(*p));
@@ -209,7 +209,7 @@ static void draw(void) {
     attrset(COLOR_PAIR(BAR)); mvhline(0, 0, ' ', COLS);
     for (int i = 0; i < 6; ++i) {
         text_at(0, menu_x[i], menu_names[i], COLS - menu_x[i]);
-        int accelerator = menu_x[i] + (i == 5 ? 1 : 0);
+        int accelerator = menu_x[i];
         if (accelerator < COLS) mvchgat(0, accelerator, 1, A_UNDERLINE, BAR, NULL);
     }
     attrset(COLOR_PAIR(FRAME));
@@ -223,7 +223,7 @@ static void draw(void) {
     wide_at(LINES - 2, 0, L'└'); wide_at(LINES - 2, COLS - 1, L'┘');
     attrset(COLOR_PAIR(SHADOW)); mvhline(1, 1, ' ', width);
     char title[1024];
-    snprintf(title, sizeof title, " %s%s ", e.path ? e.path : "Sin nombre", dirty() ? " *" : "");
+    snprintf(title, sizeof title, " %s%s ", e.path ? e.path : "UNTITLED1", dirty() ? " *" : "");
     int title_len = (int)strlen(title);
     int title_x = title_len < width ? (COLS - title_len) / 2 : 1;
     attrset(COLOR_PAIR(BAR));
@@ -255,11 +255,9 @@ static void draw(void) {
         }
         ++p;
     }
-    size_t line = 1;
-    for (size_t i = 0; i < e.pos; ++i) if (e.s[i] == L'\n') ++line;
     char status[1024];
     if (e.message[0]) snprintf(status, sizeof status, "%s", e.message);
-    else snprintf(status, sizeof status, "F1=Ayuda  Ctrl+B=Buscar  Ctrl+R=Reemplazar  Ctrl+S=Guardar  %zu:%d", line, col + 1);
+    else snprintf(status, sizeof status, "F1=Help  Enter=Execute  Esc=Cancel  Tab=Next Field");
     footer(status);
     attrset(COLOR_PAIR(EDIT)); move(row + EDIT_TOP, EDIT_LEFT + col - e.left); curs_set(1); refresh();
 }
@@ -273,7 +271,7 @@ static Box box_open(const char *title, int height, int width) {
     for (int y = 0; y < height; ++y) mvhline(b.y + y, b.x, ' ', width);
     attrset(COLOR_PAIR(TITLE)); mvhline(b.y, b.x, ' ', width);
     text_at(b.y, b.x + (width - (int)strlen(title)) / 2, title, width - 2);
-    footer("Enter=Ejecutar  Esc=Cancelar  Tab=Siguiente campo  Shift+Tab=Anterior");
+    footer("F1=Help  Enter=Execute  Esc=Cancel  Tab=Next Field");
     mvchgat(LINES - 1, 0, COLS, A_NORMAL, BAR, NULL);
     return b;
 }
@@ -291,7 +289,7 @@ static void button(Box b, int y, int x, const char *label, bool active) {
 static int key(wint_t *value) { return get_wch(value); }
 static bool small_screen(int h, int w) {
     if (LINES >= h + 2 && COLS >= w + 2) return false;
-    message("Agrandá la terminal para abrir este diálogo."); return true;
+    message("Enlarge the terminal to open this dialog."); return true;
 }
 static int confirm(const char *title, const char *prompt) {
     if (small_screen(7, 58)) return 2;
@@ -299,9 +297,9 @@ static int confirm(const char *title, const char *prompt) {
     for (;;) {
         Box b = box_open(title, 7, 58);
         attrset(COLOR_PAIR(DIALOG)); text_at(b.y + 2, b.x + 2, prompt, 54);
-        button(b, 4, 3, "Guardar", choice == 0);
-        button(b, 4, 20, "Descartar", choice == 1);
-        button(b, 4, 39, "Cancelar", choice == 2);
+        button(b, 4, 3, "Save", choice == 0);
+        button(b, 4, 20, "Discard", choice == 1);
+        button(b, 4, 39, "Cancel", choice == 2);
         refresh(); wint_t c; int t = key(&c);
         if (t == ERR) continue;
         if (t == KEY_CODE_YES && c == KEY_RESIZE) return 2;
@@ -356,8 +354,8 @@ static bool path_prompt(const char *title, char **out) {
     int focus = 0;
     for (;;) {
         Box b = box_open(title, 7, 62);
-        attrset(COLOR_PAIR(DIALOG)); text_at(b.y + 2, b.x + 2, "Archivo:", 9);
-        button(b, 4, 13, "Aceptar", focus == 1); button(b, 4, 38, "Cancelar", focus == 2);
+        attrset(COLOR_PAIR(DIALOG)); text_at(b.y + 2, b.x + 2, "File Name:", 9);
+        button(b, 4, 13, "OK", focus == 1); button(b, 4, 38, "Cancel", focus == 2);
         field(b, 2, 12, 45, s, p, focus == 0); refresh();
         wint_t c; int t = key(&c); if (t == ERR) continue;
         if (c == 27 || (t == KEY_CODE_YES && c == KEY_RESIZE)) return false;
@@ -367,16 +365,16 @@ static bool path_prompt(const char *title, char **out) {
             if (focus == 2) return false;
             if (!s[0]) continue;
             size_t n = wcstombs(NULL, s, 0);
-            if (n == (size_t)-1) { message("Ruta inválida para esta configuración regional."); return false; }
+            if (n == (size_t)-1) { message("Invalid file name for the current locale."); return false; }
             char *path = alloc(n + 1); wcstombs(path, s, n + 1); free(*out); *out = path; return true;
         } else if (!focus) field_key(s, &p, FIELD, c, t);
     }
 }
 static bool save(void) {
     char *path = e.path ? copy_path(e.path) : NULL;
-    if (!path && !path_prompt("Guardar como", &path)) return false;
+    if (!path && !path_prompt("Save As", &path)) return false;
     struct stat st; bool exists = lstat(path, &st) == 0;
-    if (exists && !S_ISREG(st.st_mode)) { message("Guardar requiere un archivo regular (no un enlace)."); free(path); return false; }
+    if (exists && !S_ISREG(st.st_mode)) { message("Save requires a regular file, not a symbolic link."); free(path); return false; }
     char *temp = alloc(strlen(path) + 16); sprintf(temp, "%s.gui-XXXXXX", path);
     int fd = mkstemp(temp);
     if (fd < 0) { message(strerror(errno)); free(temp); free(path); return false; }
@@ -394,16 +392,16 @@ static bool save(void) {
     if (fflush(f) != 0 || fsync(fd) != 0) ok = false;
     if (fclose(f) != 0) ok = false;
     if (ok && rename(temp, path) != 0) ok = false;
-    if (!ok) { unlink(temp); message("No se pudo guardar; el archivo original se conserva."); }
+    if (!ok) { unlink(temp); message("Save failed. The original file was kept."); }
     else {
         free(e.path); e.path = path; path = NULL;
-        free(e.saved); e.saved = copy_text(e.s, e.n); message("Archivo guardado.");
+        free(e.saved); e.saved = copy_text(e.s, e.n); message("File saved.");
     }
     free(temp); free(path); return ok;
 }
 static bool may_discard(void) {
     if (!dirty()) return true;
-    int answer = confirm("Cambios sin guardar", "¿Querés guardar antes de continuar?");
+    int answer = confirm("Unsaved Changes", "Save your changes before continuing?");
     return answer == 1 || (answer == 0 && save());
 }
 static void reset_document(wchar_t *s, size_t n, char *path, bool crlf, bool bom) {
@@ -421,14 +419,14 @@ static bool load(const char *path) {
     size_t n = 0, cap = 4096; char *bytes = alloc(cap);
     for (;;) {
         if (n == cap) {
-            if (cap > SIZE_MAX / 2) die("archivo demasiado grande");
-            cap *= 2; char *p = realloc(bytes, cap); if (!p) die("memoria insuficiente"); bytes = p;
+            if (cap > SIZE_MAX / 2) die("File is too large.");
+            cap *= 2; char *p = realloc(bytes, cap); if (!p) die("Out of memory."); bytes = p;
         }
         size_t got = fread(bytes + n, 1, cap - n, f); n += got;
         if (!got) break;
     }
     bool ok = !ferror(f); fclose(f);
-    if (n > SIZE_MAX / sizeof(wchar_t) - 1) die("archivo demasiado grande");
+    if (n > SIZE_MAX / sizeof(wchar_t) - 1) die("File is too large.");
     wchar_t *text = alloc((n + 1) * sizeof(*text)); size_t len = 0, off = 0;
     bool bom = n >= 3 && memcmp(bytes, "\xef\xbb\xbf", 3) == 0, crlf = false;
     if (bom) off = 3;
@@ -441,7 +439,7 @@ static bool load(const char *path) {
         text[len++] = c;
     }
     text[len] = 0; free(bytes);
-    if (!ok) { free(text); message("No se pudo leer: se requiere texto UTF-8 válido, sin bytes NUL."); return false; }
+    if (!ok) { free(text); message("Cannot read file: valid UTF-8 text without NUL bytes is required."); return false; }
     reset_document(text, len, copy_path(path), crlf, bom); return true;
 }
 static bool word(wchar_t c) { return iswalnum(c) || c == L'_'; }
@@ -456,14 +454,14 @@ static bool matches(size_t p) {
     return !e.whole_word || ((!p || !word(e.s[p - 1])) && (p + n == e.n || !word(e.s[p + n])));
 }
 static bool find_next(size_t from) {
-    if (!e.needle[0]) { message("Escribí primero el texto a buscar (Ctrl+B)."); return false; }
+    if (!e.needle[0]) { message("Enter text to find first (Ctrl+B)."); return false; }
     for (size_t i = from; i <= e.n; ++i) if (matches(i)) {
         e.anchor = i; e.pos = i + wcslen(e.needle); e.preferred = -1; message(""); return true;
     }
     for (size_t i = 0; i < from && i <= e.n; ++i) if (matches(i)) {
-        e.anchor = i; e.pos = i + wcslen(e.needle); e.preferred = -1; message("Búsqueda desde el principio."); return true;
+        e.anchor = i; e.pos = i + wcslen(e.needle); e.preferred = -1; message("Search continued from the beginning."); return true;
     }
-    message("No se encontraron coincidencias."); return false;
+    message("Text not found."); return false;
 }
 static bool replace_one(void) {
     size_t a, b; range(&a, &b);
@@ -482,7 +480,7 @@ static bool replace_all(void) {
             splice(p, p + n, e.replacement, r); p += r; ++count;
         } else ++p;
     }
-    snprintf(e.message, sizeof e.message, "%zu reemplazos.", count); return count != 0;
+    snprintf(e.message, sizeof e.message, "%zu replacements.", count); return count != 0;
 }
 static void search_dialog(bool replacing) {
     int height = replacing ? 12 : 10, width = replacing ? 50 : 42;
@@ -491,25 +489,25 @@ static void search_dialog(bool replacing) {
     int field_x = replacing ? 15 : 12, field_width = replacing ? 30 : 26;
     const int search_x[] = {4, 17, 32}, replace_x[] = {2, 10, 23, 40};
     const int *button_x = replacing ? replace_x : search_x;
-    const char *search_labels[] = {"  OK  ", "Cancelar", "Ayuda"};
-    const char *replace_labels[] = {"OK", "Todos", "Cancelar", "Ayuda"};
+    const char *search_labels[] = {"  OK  ", "Cancel", "Help"};
+    const char *replace_labels[] = {"OK", "All", "Cancel", "Help"};
     const char **button_labels = replacing ? replace_labels : search_labels;
     size_t pos[2] = {wcslen(e.needle), wcslen(e.replacement)};
     bool help = false;
     for (;;) {
-        Box b = box_open(replacing ? "Reemplazar" : "Buscar", height, width);
+        Box b = box_open(replacing ? "Replace" : "Find", height, width);
         int opts = replacing ? 5 : 4, by = height - 3;
         attrset(COLOR_PAIR(DIALOG));
-        text_at(b.y + 2, b.x + 2, "Buscar:", 12);
-        if (replacing) text_at(b.y + 3, b.x + 2, "Reemplazar:", 12);
+        text_at(b.y + 2, b.x + 2, "Find What:", 12);
+        if (replacing) text_at(b.y + 3, b.x + 2, "Replace With:", 13);
         char option[80];
-        snprintf(option, sizeof option, "[%c] Solo palabras completas", e.whole_word ? 'X' : ' ');
+        snprintf(option, sizeof option, "[%c] Match Whole Word Only", e.whole_word ? 'X' : ' ');
         text_at(b.y + opts, b.x + 2, option, width - 4);
         if (focus == fields) mvchgat(b.y + opts, b.x + 2, 3, A_REVERSE, DIALOG, NULL);
-        snprintf(option, sizeof option, "[%c] Distinguir mayúsculas/minúsculas", e.match_case ? 'X' : ' ');
+        snprintf(option, sizeof option, "[%c] Match Case", e.match_case ? 'X' : ' ');
         text_at(b.y + opts + 1, b.x + 2, option, width - 4);
         if (focus == fields + 1) mvchgat(b.y + opts + 1, b.x + 2, 3, A_REVERSE, DIALOG, NULL);
-        if (help) text_at(b.y + opts + 2, b.x + 2, "Tab: cambiar  Espacio: marcar", width - 4);
+        if (help) text_at(b.y + opts + 2, b.x + 2, "Tab: Next Field  Space: Toggle", width - 4);
         int button_focus = focus - fields - 2;
         for (int i = 0; i < buttons; ++i)
             button(b, by, button_x[i], button_labels[i], button_focus == i);
@@ -553,28 +551,28 @@ static void search_dialog(bool replacing) {
 }
 static void about(void) {
     if (small_screen(9, 54)) return;
-    Box b = box_open("Acerca de gui", 9, 54);
+    Box b = box_open("About gui", 9, 54);
     attrset(COLOR_PAIR(DIALOG));
-    text_at(b.y + 2, b.x + 4, "gui 0.1.0 - edición en C", 45);
-    text_at(b.y + 3, b.x + 4, "Código nuevo. Interfaz con ncursesw.", 45);
-    text_at(b.y + 4, b.x + 4, "Proyecto de gpetruzzi. Licencia MIT.", 45);
-    button(b, 6, 21, "Aceptar", true); refresh();
+    text_at(b.y + 2, b.x + 4, "gui 0.1.0 - C edition", 45);
+    text_at(b.y + 3, b.x + 4, "Original code. Interface with ncursesw.", 45);
+    text_at(b.y + 4, b.x + 4, "A project by gpetruzzi. MIT License.", 45);
+    button(b, 6, 21, "OK", true); refresh();
     wint_t c; key(&c);
 }
 enum { NONE, NEW, OPEN, SAVE, QUIT, UNDO, REDO, COPY, CUT, PASTE, FIND, REPLACE, SELECT_ALL, ABOUT, NEXT, CASE, WHOLE };
 static int menu(int which) {
 restart:;
-    const char *file[] = {"Nuevo          Ctrl+N", "Abrir          Ctrl+O", "Guardar        Ctrl+S", "Salir          Ctrl+Q"};
+    const char *file[] = {"New            Ctrl+N", "Open           Ctrl+O", "Save           Ctrl+S", "Exit           Ctrl+Q"};
     const int fa[] = {NEW, OPEN, SAVE, QUIT};
-    const char *edit[] = {"Deshacer       Ctrl+Z", "Rehacer        Ctrl+Y", "Copiar         Ctrl+C", "Cortar         Ctrl+X", "Pegar          Ctrl+V", "Buscar         Ctrl+B", "Reemplazar     Ctrl+R", "Seleccionar    Ctrl+A"};
+    const char *edit[] = {"Undo           Ctrl+Z", "Redo           Ctrl+Y", "Copy           Ctrl+C", "Cut            Ctrl+X", "Paste          Ctrl+V", "Find           Ctrl+B", "Replace        Ctrl+R", "Select All     Ctrl+A"};
     const int ea[] = {UNDO, REDO, COPY, CUT, PASTE, FIND, REPLACE, SELECT_ALL};
-    const char *search[] = {"Buscar         Ctrl+B", "Reemplazar     Ctrl+R", "Siguiente      F3"};
+    const char *search[] = {"Find           Ctrl+B", "Replace        Ctrl+R", "Find Next      F3"};
     const int sa[] = {FIND, REPLACE, NEXT};
-    const char *view[] = {"Sin números de línea", "Sin resaltar la línea"};
+    const char *view[] = {"Line Numbers: Off", "Line Highlight: Off"};
     const int va[] = {NONE, NONE};
-    const char *options[] = {"Mayúsculas/minúsculas", "Palabras completas"};
+    const char *options[] = {"Match Case", "Match Whole Word Only"};
     const int oa[] = {CASE, WHOLE};
-    const char *help[] = {"Acerca de gui"}; const int ha[] = {ABOUT};
+    const char *help[] = {"About gui"}; const int ha[] = {ABOUT};
     const char **labels = which == 0 ? file : which == 1 ? edit : which == 2 ? search : which == 3 ? view : which == 4 ? options : help;
     const int *actions = which == 0 ? fa : which == 1 ? ea : which == 2 ? sa : which == 3 ? va : which == 4 ? oa : ha;
     int count = which == 0 ? 4 : which == 1 ? 8 : which == 2 ? 3 : which == 5 ? 1 : 2;
@@ -584,7 +582,7 @@ restart:;
     for (;;) {
         draw(); curs_set(0);
         mvchgat(0, menu_x[which], menu_width[which], A_NORMAL, SELECT, NULL);
-        footer("F1=Ayuda  Enter=Ejecutar  Esc=Cancelar  Flechas=Cambiar menú");
+        footer("F1=Help  Enter=Execute  Esc=Cancel  Left/Right=Next Menu");
         mvchgat(LINES - 1, 0, COLS, A_NORMAL, BAR, NULL);
         attrset(COLOR_PAIR(SHADOW));
         for (int y = 2; y <= count + 3; ++y) mvhline(y, x + 1, ' ', 28);
@@ -621,7 +619,7 @@ static bool action(int a) {
     if (a == NEW && may_discard()) reset_document(copy_text(L"", 0), 0, NULL, false, false);
     else if (a == OPEN) {
         if (!may_discard()) return true;
-        char *path = NULL; if (path_prompt("Abrir archivo", &path)) load(path); free(path);
+        char *path = NULL; if (path_prompt("Open File", &path)) load(path); free(path);
     } else if (a == SAVE) save();
     else if (a == UNDO) undo_redo(false);
     else if (a == REDO) undo_redo(true);
@@ -633,8 +631,8 @@ static bool action(int a) {
     else if (a == SELECT_ALL) { e.anchor = 0; e.pos = e.n; }
     else if (a == ABOUT) about();
     else if (a == NEXT) find_next(e.pos);
-    else if (a == CASE) { e.match_case = !e.match_case; message(e.match_case ? "Distinguir mayúsculas: activado." : "Distinguir mayúsculas: desactivado."); }
-    else if (a == WHOLE) { e.whole_word = !e.whole_word; message(e.whole_word ? "Palabras completas: activado." : "Palabras completas: desactivado."); }
+    else if (a == CASE) { e.match_case = !e.match_case; message(e.match_case ? "Match Case: On." : "Match Case: Off."); }
+    else if (a == WHOLE) { e.whole_word = !e.whole_word; message(e.whole_word ? "Match Whole Word Only: On." : "Match Whole Word Only: Off."); }
     return true;
 }
 static size_t mouse_position(int y, int x) {
@@ -653,8 +651,8 @@ static void bracketed_paste(void) {
         if (c == L'\n' && previous_cr) { previous_cr = false; continue; }
         previous_cr = c == L'\r';
         if (n == cap) {
-            if (cap > SIZE_MAX / sizeof(*s) / 2) die("pegado demasiado grande");
-            cap *= 2; wchar_t *p = realloc(s, cap * sizeof(*s)); if (!p) die("memoria insuficiente"); s = p;
+            if (cap > SIZE_MAX / sizeof(*s) / 2) die("Pasted text is too large.");
+            cap *= 2; wchar_t *p = realloc(s, cap * sizeof(*s)); if (!p) die("Out of memory."); s = p;
         }
         s[n++] = c == L'\r' ? L'\n' : (wchar_t)c;
     }
@@ -678,12 +676,12 @@ static bool handle(wint_t c, int type) {
             wint_t next; timeout(100); int t = key(&next); timeout(-1);
             if (t == OK) {
                 next = towlower(next);
-                if (next == 'a') return action(menu(0));
+                if (next == 'a' || next == 'f') return action(menu(0));
                 if (next == 'e') return action(menu(1));
-                if (next == 'b') return action(menu(2));
+                if (next == 'b' || next == 's') return action(menu(2));
                 if (next == 'v') return action(menu(3));
                 if (next == 'o') return action(menu(4));
-                if (next == 'y') return action(menu(5));
+                if (next == 'y' || next == 'h') return action(menu(5));
             }
             e.anchor = e.pos; return true;
         }
@@ -739,21 +737,22 @@ static bool handle(wint_t c, int type) {
 #ifndef GUI_TEST
 int main(int argc, char **argv) {
     if (argc == 2 && (!strcmp(argv[1], "--version") || !strcmp(argv[1], "--help"))) {
-        puts("gui 0.1.0 (C)\nUso: gui [archivo]\nCtrl+B Buscar | Ctrl+R Reemplazar | Ctrl+S Guardar | Ctrl+Q Salir"); return 0;
+        puts("gui 0.1.0 (C)\nUsage: gui [file]\nCtrl+B Find | Ctrl+R Replace | Ctrl+S Save | Ctrl+Q Exit"); return 0;
     }
-    if (argc > 2) { fputs("Uso: gui [archivo]\n", stderr); return 1; }
-    if (!setlocale(LC_ALL, "" ) || MB_CUR_MAX < 4) die("se necesita una configuración regional UTF-8 (por ejemplo LANG=C.UTF-8)");
+    if (argc > 2) { fputs("Usage: gui [file]\n", stderr); return 1; }
+    if (!setlocale(LC_ALL, "" ) || MB_CUR_MAX < 4) die("A UTF-8 locale is required (for example LANG=C.UTF-8).");
+    setlocale(LC_MESSAGES, "C");
     e.s = copy_text(L"", 0); e.saved = copy_text(L"", 0); e.preferred = -1;
     if (argc == 2 && !load(argv[1])) die(e.message);
     initscr(); screen_ready = true; atexit(cleanup);
-    if (!has_colors()) die("se necesita una terminal con colores");
+    if (!has_colors()) die("A color terminal is required.");
     raw(); noecho(); keypad(stdscr, TRUE); start_color();
-    if (COLOR_PAIRS <= TITLE) die("la terminal no ofrece suficientes pares de color");
+    if (COLOR_PAIRS <= TITLE) die("The terminal does not provide enough color pairs.");
     short white = COLORS >= 16 ? 15 : COLOR_WHITE;
-    short blue = COLOR_BLUE, gray = COLOR_WHITE, cyan = COLOR_CYAN;
-    if (can_change_color() && COLORS >= 20) {
-        const short values[4][3] = {{0, 0, 667}, {1000, 1000, 1000}, {667, 667, 667}, {0, 667, 667}};
-        for (int i = 0; i < 4; ++i) {
+    short blue = COLOR_BLUE, gray = COLOR_WHITE;
+    if (can_change_color() && COLORS >= 19) {
+        const short values[3][3] = {{0, 0, 667}, {1000, 1000, 1000}, {667, 667, 667}};
+        for (int i = 0; i < 3; ++i) {
             short slot = (short)(16 + i), r, g, b;
             if (color_content(slot, &r, &g, &b) == ERR) break;
             palette_saved[palette_count][0] = slot;
@@ -763,12 +762,12 @@ int main(int argc, char **argv) {
             ++palette_count;
             init_color(slot, values[i][0], values[i][1], values[i][2]);
         }
-        if (palette_count == 4) { blue = 16; white = 17; gray = 18; cyan = 19; }
+        if (palette_count == 3) { blue = 16; white = 17; gray = 18; }
     }
     init_pair(EDIT, white, blue); init_pair(BAR, COLOR_BLACK, gray);
     init_pair(SELECT, blue, gray); init_pair(DIALOG, COLOR_BLACK, gray);
     init_pair(BUTTON, COLOR_BLACK, white); init_pair(SHADOW, COLOR_BLACK, COLOR_BLACK);
-    init_pair(STATUS, COLOR_BLACK, cyan); init_pair(FRAME, gray, blue); init_pair(TITLE, COLOR_BLACK, white);
+    init_pair(STATUS, COLOR_BLACK, gray); init_pair(FRAME, gray, blue); init_pair(TITLE, COLOR_BLACK, white);
     define_key("\033[1;2A", K_SUP); define_key("\033[1;2B", K_SDOWN);
     define_key("\033[1;2D", KEY_SLEFT); define_key("\033[1;2C", KEY_SRIGHT);
     define_key("\033[2;5~", K_COPY); define_key("\033[2;2~", K_PASTE);

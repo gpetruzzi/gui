@@ -1,65 +1,80 @@
-# gui — versión nueva en C
+# gui — C edition
 
-Editor de terminal para Linux, escrito desde cero en C11 con ncursesw.
-Esta rama `c-rewrite` contiene código nuevo: no es una traducción del código Rust de Microsoft Edit.
-La versión anterior de Rust permanece en `main`.
+An independent Linux terminal editor written from scratch in C11 with ncursesw.
+The `c-rewrite` branch contains new C code, not a translation of Microsoft Edit's Rust implementation. The older Rust variant remains in `main`.
 
-**Estado: primer prototipo sin compilar ni probar en ejecución.** No reemplazar todavía la versión instalada. La revisión realizada es de código, no una validación de funcionamiento.
+**Development prototype. The latest interface changes have not been compiled or visually verified by the assistant.** Try this branch separately before replacing an installed editor.
 
-## Aspecto y controles
+## Classic appearance
 
-- Fondo azul y texto blanco, con marco fino y nombre de archivo centrado sobre una franja negra.
-- Barra de menús gris claro con letras negras; barra inferior turquesa en edición y gris en los diálogos y menús abiertos.
-- Sin números de línea y sin resaltar la línea donde está el cursor.
-- Solo la selección explícita cambia de color.
-- Diálogos clásicos grises con título claro, campos delimitados, casillas y botones con sombra de media celda.
-- Menús clásicos con borde y sombra: Alt+A Archivo, Alt+E Edición, Alt+B Buscar, Alt+V Ver, Alt+O Opciones y Alt+Y Ayuda. F10 abre los menús; F1 muestra la información de gui.
-- Ctrl+B Buscar; Ctrl+R Reemplazar; F3 busca la siguiente coincidencia.
-- Shift+flechas selecciona; Ctrl+A selecciona todo.
-- Ctrl+C / Ctrl+Insert copia; Ctrl+X corta; Ctrl+V / Shift+Insert pega.
-- Ctrl+S guarda; Ctrl+O abre; Ctrl+N crea un documento; Ctrl+Q sale.
-- Ctrl+Z deshace y Ctrl+Y rehace, con hasta 64 estados por documento.
-- Mouse para colocar el cursor, seleccionar y usar menús. El diálogo de búsqueda también permite activar controles con el mouse.
+- English interface: File, Edit, Search, View, Options and Help.
+- Blue editing area with white text, a thin frame, and a centered file name over a black title strip.
+- Light gray menu bar and bottom help bar with black text.
+- No line numbers and no current-line highlight. Only explicitly selected text changes color.
+- Gray dialogs with white title strips, dotted input fields, checkboxes and white buttons with half-cell black shadows.
 
-El portapapeles de esta primera versión es interno. Para pegar texto de otra aplicación se utiliza el pegado del terminal (habitualmente Ctrl+Shift+V). El editor recibe también el pegado delimitado del terminal. Algunos terminales capturan Ctrl+Insert o Shift+Insert antes de enviarlos a la aplicación.
+The terminal font controls the exact appearance of characters and shadows.
 
-## Preparar Debian o Ubuntu
+## Keys
+
+| Action | Keys |
+| --- | --- |
+| Find / Replace | Ctrl+B / Ctrl+R |
+| Find Next | F3 |
+| Select text | Shift+arrows |
+| Select All | Ctrl+A |
+| Copy | Ctrl+C or Ctrl+Insert |
+| Cut | Ctrl+X |
+| Paste | Ctrl+V or Shift+Insert |
+| Save / Open / New | Ctrl+S / Ctrl+O / Ctrl+N |
+| Quit | Ctrl+Q |
+| Undo / Redo | Ctrl+Z / Ctrl+Y |
+| File menu | Alt+A or Alt+F |
+| Edit menu | Alt+E |
+| Search menu | Alt+B or Alt+S |
+| View / Options menus | Alt+V / Alt+O |
+| Help menu | Alt+Y or Alt+H |
+| Menu bar / About gui | F10 / F1 |
+
+The clipboard is internal in this prototype. To paste from another application, use your terminal's paste command (usually Ctrl+Shift+V). Bracketed terminal paste is supported in the document. Some terminals intercept Ctrl+Insert or Shift+Insert.
+
+Use Tab and Shift+Tab to move between dialog controls, Space to toggle checkboxes, Enter to activate a control, and Esc to cancel. The mouse can place the cursor, select text, open menus and activate search dialog controls.
+
+## Build separately on Debian or Ubuntu
 
 ```sh
 apt update
 apt install build-essential libncurses-dev git
 git clone --branch c-rewrite --single-branch https://github.com/gpetruzzi/gui.git gui-c
 cd gui-c
+make
+make test
+./gui sample.txt
 ```
 
-En Fedora, los requisitos son `gcc make ncurses-devel git`.
-
-Cuando quieras compilar y probar, de forma separada de la versión instalada:
+For an existing checkout:
 
 ```sh
-make
-./gui prueba.txt
+cd ~/gui-c
+git pull --ff-only
+make && make test
+./gui sample.txt
 ```
 
-No hace falta Rust. Para una futura instalación, después de verificar el prototipo: `make install` (por defecto en `/usr/local/bin`).
+Fedora dependencies: `gcc make ncurses-devel git`. Rust is not required.
+After validating the prototype, `make install` installs to `/usr/local/bin` by default.
 
-## Comprobaciones pendientes en Linux
+## Validation
 
-Se incluyen pruebas del núcleo (selección, historial, búsqueda, reemplazo y guardado UTF-8/CRLF). Se ejecutan con `make test`; **todavía no se compilaron ni se ejecutaron**.
+Core tests cover selection, undo/redo, search, replacement, mouse coordinate mapping, and UTF-8/CRLF file I/O. Updated tests have not been run by the assistant.
 
-1. Abrir un archivo UTF-8 con tildes, editarlo y guardar una copia.
-2. Comprobar selección con las cuatro flechas y copiar/pegar con ambos juegos de atajos.
-3. Verificar visualmente la línea sin resaltado y las sombras de botones.
-4. Buscar, distinguir mayúsculas, palabras completas y reemplazar una o todas las coincidencias.
-5. Deshacer y rehacer inserción, borrado, pegado y reemplazo de varias coincidencias.
-6. Cancelar la apertura/salida con cambios sin guardar y comprobar que no se pierden.
-7. Comprobar archivos con saltos LF y CRLF, guardado fallido y cambio de tamaño de terminal.
+On Linux, also check all selection shortcuts, menu activation, dialog focus, terminal resize, canceled exits with unsaved changes, and failed saves. Compare the appearance against the classic editor references.
 
-## Alcance de este prototipo
+## Current scope
 
-Un documento abierto a la vez, búsqueda literal sin expresiones regulares y archivos UTF-8. No se convierten archivos binarios ni codificaciones antiguas. Se preserva el BOM UTF-8 y el formato LF/CRLF uniforme; los archivos con saltos mezclados se normalizan a CRLF al guardar si contienen CRLF. Los enlaces simbólicos no se sobrescriben.
+One open document, literal search without regular expressions, and UTF-8 text files. Binary files, NUL bytes and invalid UTF-8 are rejected. UTF-8 BOM and uniform LF/CRLF line endings are preserved. Mixed line endings are normalized to CRLF when CRLF is present. Saving over symbolic links is not supported.
 
-El almacenamiento y el historial usan copias en memoria: esta primera implementación está orientada a textos pequeños y medianos. La edición se hace por puntos de código Unicode; todavía no se agrupan emojis compuestos ni todos los caracteres combinados al mover o borrar. La presentación exacta depende de la fuente y de las capacidades de la terminal.
+The document and up to 64 undo states are stored as memory copies, so this prototype is intended for small and medium text files. Editing operates on Unicode code points; complex emoji and combining sequences are not yet treated as indivisible grapheme clusters.
 
-Licencia MIT. La interfaz usa ncursesw, una biblioteca independiente. El cuadro Acerca de identifica gui y su propia versión, 0.1.0.
+MIT License. The About dialog identifies gui's own C edition and version.
 
