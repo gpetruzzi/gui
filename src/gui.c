@@ -51,6 +51,20 @@ typedef struct {
     char message[256];
 } Editor;
 static Editor e;
+static uint64_t text_revision;
+static bool repaint_needed = true;
+typedef struct {
+    uint64_t revision;
+    size_t top, selection_start, selection_end;
+    int left, height, width;
+    bool read_only, binary_view;
+} ViewState;
+static bool view_changed(const ViewState *a, const ViewState *b) {
+    return a->revision != b->revision || a->top != b->top || a->left != b->left ||
+           a->selection_start != b->selection_start || a->selection_end != b->selection_end ||
+           a->height != b->height || a->width != b->width ||
+           a->read_only != b->read_only || a->binary_view != b->binary_view;
+}
 typedef struct { bool read_only, binary; unsigned line_width; } OpenOptions;
 static OpenOptions open_options = {false, false, 70};
 static bool screen_ready;
@@ -118,11 +132,17 @@ static void undo_redo(bool redo) {
     Snapshot s = from[--*fn];
     free(e.s);
     e.s = s.s; e.n = s.n; e.pos = s.pos; e.anchor = s.anchor;
+    ++text_revision;
     e.preferred = -1;
 }
 static void range(size_t *a, size_t *b) {
     *a = e.pos < e.anchor ? e.pos : e.anchor;
     *b = e.pos > e.anchor ? e.pos : e.anchor;
+}
+static ViewState view_snapshot(int height, int width) {
+    size_t a, b; range(&a, &b);
+    if (a == b) a = b = 0;
+    return (ViewState){text_revision, e.top, a, b, e.left, height, width, e.read_only, e.binary_view};
 }
 /* The caller owns the undo checkpoint. Inserted text must not alias e.s. */
 static void splice(size_t a, size_t b, const wchar_t *s, size_t n) {
@@ -136,6 +156,7 @@ static void splice(size_t a, size_t b, const wchar_t *s, size_t n) {
     memcpy(p + a + n, e.s + b, (e.n - b + 1) * sizeof(*p));
     free(e.s);
     e.s = p; e.n = len; e.pos = e.anchor = a + n; e.preferred = -1;
+    ++text_revision;
 }
 static void insert(const wchar_t *s, size_t n) {
     if (!can_edit()) return;
@@ -202,9 +223,14 @@ static int menu_from_x(int x) {
     for (int i = 5; i > 0; --i) if (x >= menu_x[i]) return i;
     return 0;
 }
-static void draw(void) {
+static void draw(bool present) {
+    static ViewState previous;
+    static bool valid;
+    static char last_message[256];
     int height = LINES - 4, width = COLS - 2;
-    if (height < 1 || width < 1) { erase(); refresh(); return; }
+    if (height < 1 || width < 1) {
+        valid = false; repaint_needed = true; erase(); if (present) refresh(); return;
+    }
     e.top = line_start(e.top > e.n ? e.n : e.top);
     size_t start = line_start(e.pos);
     if (start < e.top) e.top = start;
@@ -215,66 +241,85 @@ static void draw(void) {
     int col = column(e.pos);
     if (col < e.left) e.left = col;
     if (col >= e.left + width) e.left = col - width + 1;
-    bkgd(COLOR_PAIR(EDIT)); erase();
-    attrset(COLOR_PAIR(BAR)); mvhline(0, 0, ' ', COLS);
-    for (int i = 0; i < 6; ++i) {
-        text_at(0, menu_x[i], menu_names[i], COLS - menu_x[i]);
-        int accelerator = menu_x[i];
-        if (accelerator < COLS) mvchgat(0, accelerator, 1, A_UNDERLINE, BAR, NULL);
+    ViewState current = view_snapshot(height, width);
+    size_t a = current.selection_start, b = current.selection_end;
+    bool full = repaint_needed || !valid || previous.height != height || previous.width != width;
+    bool body = full || view_changed(&previous, &current);
+    bool title_changed = full || previous.revision != current.revision ||
+                         previous.read_only != current.read_only || previous.binary_view != current.binary_view;
+    if (full) {
+        bkgdset(COLOR_PAIR(EDIT)); erase();
+        attrset(COLOR_PAIR(BAR)); mvhline(0, 0, ' ', COLS);
+        for (int i = 0; i < 6; ++i) {
+            text_at(0, menu_x[i], menu_names[i], COLS - menu_x[i]);
+            int accelerator = menu_x[i];
+            if (accelerator < COLS) mvchgat(0, accelerator, 1, A_UNDERLINE, BAR, NULL);
+        }
+        attrset(COLOR_PAIR(FRAME));
+        for (int x = 1; x < COLS - 1; ++x) {
+            wide_at(1, x, L'─'); wide_at(LINES - 2, x, L'─');
+        }
+        for (int y = EDIT_TOP; y < LINES - 2; ++y) {
+            wide_at(y, 0, L'│'); wide_at(y, COLS - 1, L'│');
+        }
+        wide_at(1, 0, L'┌'); wide_at(1, COLS - 1, L'┐');
+        wide_at(LINES - 2, 0, L'└'); wide_at(LINES - 2, COLS - 1, L'┘');
     }
-    attrset(COLOR_PAIR(FRAME));
-    for (int x = 1; x < COLS - 1; ++x) {
-        wide_at(1, x, L'─'); wide_at(LINES - 2, x, L'─');
+    if (title_changed) {
+        attrset(COLOR_PAIR(SHADOW)); mvhline(1, 1, ' ', width);
+        char title[1024];
+        snprintf(title, sizeof title, " %s%s%s ", e.path ? e.path : "UNTITLED1", dirty() ? " *" : "",
+                 e.binary_view ? " [Binary / Read-only]" : e.read_only ? " [Read-only]" : "");
+        int title_len = (int)strlen(title);
+        int title_x = title_len < width ? (COLS - title_len) / 2 : 1;
+        attrset(COLOR_PAIR(BAR));
+        text_at(1, title_x, title, width);
     }
-    for (int y = EDIT_TOP; y < LINES - 2; ++y) {
-        wide_at(y, 0, L'│'); wide_at(y, COLS - 1, L'│');
-    }
-    wide_at(1, 0, L'┌'); wide_at(1, COLS - 1, L'┐');
-    wide_at(LINES - 2, 0, L'└'); wide_at(LINES - 2, COLS - 1, L'┘');
-    attrset(COLOR_PAIR(SHADOW)); mvhline(1, 1, ' ', width);
-    char title[1024];
-    snprintf(title, sizeof title, " %s%s%s ", e.path ? e.path : "UNTITLED1", dirty() ? " *" : "",
-             e.binary_view ? " [Binary / Read-only]" : e.read_only ? " [Read-only]" : "");
-    int title_len = (int)strlen(title);
-    int title_x = title_len < width ? (COLS - title_len) / 2 : 1;
-    attrset(COLOR_PAIR(BAR));
-    text_at(1, title_x, title, width);
-    size_t a, b; range(&a, &b);
-    p = e.top;
-    for (int y = EDIT_TOP; y < EDIT_TOP + height; ++y) {
-        int x = 0;
-        while (p < e.n && e.s[p] != L'\n') {
-            wchar_t c = e.s[p]; int w = cell_width(c, x);
-            bool selected = p >= a && p < b;
-            /* No current-line highlight: only an explicit selection changes color. */
-            attrset(COLOR_PAIR(selected ? SELECT : EDIT));
-            if (c == L'\t') {
-                for (int j = 0; j < w; ++j)
-                    if (x + j >= e.left && x + j - e.left < width)
-                        mvaddch(y, EDIT_LEFT + x + j - e.left, ' ');
-            } else if (w > 0 && x >= e.left && x + w <= e.left + width) {
-                wide_at(y, EDIT_LEFT + x - e.left, iswprint(c) ? c : L'?');
-            } else if (w == 0 && x > e.left && x <= e.left + width) {
-                /* Combining marks attach to the preceding displayed character. */
-                wchar_t mark[2] = {c, 0}; addnwstr(mark, 1);
+    if (body) {
+        attrset(COLOR_PAIR(EDIT));
+        for (int y = EDIT_TOP; y < EDIT_TOP + height; ++y) mvhline(y, EDIT_LEFT, ' ', width);
+        p = e.top;
+        for (int y = EDIT_TOP; y < EDIT_TOP + height; ++y) {
+            int x = 0;
+            while (p < e.n && e.s[p] != L'\n') {
+                wchar_t c = e.s[p]; int w = cell_width(c, x);
+                bool selected = p >= a && p < b;
+                /* No current-line highlight: only an explicit selection changes color. */
+                attrset(COLOR_PAIR(selected ? SELECT : EDIT));
+                if (c == L'\t') {
+                    for (int j = 0; j < w; ++j)
+                        if (x + j >= e.left && x + j - e.left < width)
+                            mvaddch(y, EDIT_LEFT + x + j - e.left, ' ');
+                } else if (w > 0 && x >= e.left && x + w <= e.left + width) {
+                    wide_at(y, EDIT_LEFT + x - e.left, iswprint(c) ? c : L'?');
+                } else if (w == 0 && x > e.left && x <= e.left + width) {
+                    /* Combining marks attach to the preceding displayed character. */
+                    wchar_t mark[2] = {c, 0}; addnwstr(mark, 1);
+                }
+                x += w; ++p;
             }
-            x += w; ++p;
+            if (p >= e.n) break;
+            if (p >= a && p < b && x >= e.left && x - e.left < width) {
+                attrset(COLOR_PAIR(SELECT)); mvaddch(y, EDIT_LEFT + x - e.left, ' ');
+            }
+            ++p;
         }
-        if (p >= e.n) break;
-        if (p >= a && p < b && x >= e.left && x - e.left < width) {
-            attrset(COLOR_PAIR(SELECT)); mvaddch(y, EDIT_LEFT + x - e.left, ' ');
-        }
-        ++p;
     }
-    char status[1024];
-    if (e.message[0]) snprintf(status, sizeof status, "%s", e.message);
-    else snprintf(status, sizeof status, "F1=Help  Enter=Execute  Esc=Cancel  Tab=Next Field");
-    footer(status);
-    attrset(COLOR_PAIR(EDIT)); move(row + EDIT_TOP, EDIT_LEFT + col - e.left); curs_set(1); refresh();
+    if (full || strcmp(last_message, e.message)) {
+        char status[1024];
+        if (e.message[0]) snprintf(status, sizeof status, "%s", e.message);
+        else snprintf(status, sizeof status, "F1=Help  Enter=Execute  Esc=Cancel  Tab=Next Field");
+        footer(status);
+    }
+    previous = current; valid = true; repaint_needed = false;
+    snprintf(last_message, sizeof last_message, "%s", e.message);
+    attrset(COLOR_PAIR(EDIT)); move(row + EDIT_TOP, EDIT_LEFT + col - e.left);
+    if (present) { curs_set(1); refresh(); }
 }
 typedef struct { int y, x, h, w; } Box;
 static Box box_open(const char *title, int height, int width) {
-    draw(); curs_set(0);
+    draw(false); curs_set(0);
+    repaint_needed = true; /* Restore the covered cells when the modal is gone. */
     Box b = {(LINES - height) / 2, (COLS - width) / 2, height, width};
     attrset(COLOR_PAIR(SHADOW));
     for (int y = 1; y <= height; ++y) mvhline(b.y + y, b.x + 1, ' ', width);
@@ -389,7 +434,7 @@ static bool save_to(bool save_as) {
     if (!ok) { unlink(temp); message("Save failed. The original file was kept."); }
     else {
         free(e.path); e.path = path; path = NULL;
-        free(e.saved); e.saved = copy_text(e.s, e.n); message("File saved.");
+        free(e.saved); e.saved = copy_text(e.s, e.n); ++text_revision; message("File saved.");
     }
     free(temp); free(path); return ok;
 }
@@ -403,6 +448,7 @@ static bool may_discard(void) {
 static void reset_document(wchar_t *s, size_t n, char *path, bool crlf, bool bom) {
     free(e.s); free(e.saved); free(e.path);
     e.s = s; e.n = n; e.path = path; e.saved = copy_text(s, n);
+    ++text_revision;
     e.pos = e.anchor = e.top = 0; e.left = 0; e.preferred = -1; e.crlf = crlf; e.bom = bom;
     e.read_only = e.binary_view = e.dragging = false;
     clear_history(e.undo, &e.un); clear_history(e.redo, &e.rn);
@@ -639,7 +685,8 @@ restart:;
     for (int i = 0; i < count; ++i) if (action_enabled(actions[i])) { selected = i; break; }
     if (x + panel_width + 1 > COLS) x = COLS - panel_width - 1;
     for (;;) {
-        draw(); curs_set(0);
+        draw(false); curs_set(0);
+        repaint_needed = true;
         mvchgat(0, menu_x[which], menu_width[which], A_NORMAL, MENU_ACTIVE, NULL);
         footer(which == 1 ? edit_hint(actions[selected]) : which == 2 ? search_hint(actions[selected]) :
                "F1=Help  Enter=Execute  Esc=Cancel  Left/Right=Next Menu");
@@ -895,7 +942,7 @@ int main(int argc, char **argv) {
     printf("\033[?1003l\033[?1002h\033[?2004h"); fflush(stdout);
     bool running = true;
     while (running) {
-        draw(); wint_t c; int t = key(&c); if (t == ERR) continue;
+        draw(true); wint_t c; int t = key(&c); if (t == ERR) continue;
         e.message[0] = 0; running = handle(c, t);
     }
     cleanup();

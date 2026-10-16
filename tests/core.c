@@ -174,6 +174,26 @@ static void test_mouse_drag_copy_paste(void) {
     assert(e.pos == 0 && e.anchor == 0 && !e.dragging);
     document(L"");
 }
+static void test_cursor_repaint_state(void) {
+    document(L"abcdef\nxyz");
+    ViewState before = view_snapshot(20, 78);
+    move_to(3, false, false);
+    ViewState after = view_snapshot(20, 78);
+    assert(!view_changed(&before, &after));
+    move_to(5, true, false); after = view_snapshot(20, 78);
+    assert(view_changed(&before, &after));
+    before = after; copy_selection(false); after = view_snapshot(20, 78);
+    assert(!view_changed(&before, &after));
+    move_to(2, false, false); before = view_snapshot(20, 78);
+    e.left = 2; after = view_snapshot(20, 78); assert(view_changed(&before, &after));
+    e.left = 0; after = view_snapshot(19, 78); assert(view_changed(&before, &after));
+    insert(L"z", 1); after = view_snapshot(20, 78); assert(view_changed(&before, &after));
+    before = after; undo_redo(false); after = view_snapshot(20, 78);
+    assert(view_changed(&before, &after));
+    before = after; e.read_only = true; after = view_snapshot(20, 78);
+    assert(view_changed(&before, &after));
+    document(L"");
+}
 int main(void) {
     assert(setlocale(LC_ALL, "C.UTF-8"));
     e.s = copy_text(L"", 0); e.saved = copy_text(L"", 0); e.preferred = -1;
@@ -183,6 +203,7 @@ int main(void) {
     test_read_only_and_binary_view();
     test_edit_menu_commands();
     test_mouse_drag_copy_paste();
+    test_cursor_repaint_state();
     free(e.s); free(e.saved); free(e.path); free(e.clip);
     clear_history(e.undo, &e.un); clear_history(e.redo, &e.rn);
     puts("Core tests: OK"); return 0;

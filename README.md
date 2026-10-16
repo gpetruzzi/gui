@@ -18,6 +18,8 @@ The `c-rewrite` branch contains new C code, not a translation of Microsoft Edit'
 
 The terminal font controls the exact appearance of characters and shadows.
 
+Ordinary cursor movement does not erase or rebuild the screen. The editor tracks text revisions, selection, scrolling and terminal size; only changes to those require repainting the document. Status messages update the footer independently. Dialogs and menus are composed before refreshing the terminal, avoiding an intermediate display of the uncovered background.
+
 ## Keys
 
 | Action | Keys |
