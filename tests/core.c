@@ -102,12 +102,42 @@ static void test_file_picker_lists(void) {
     assert(unlink(file) == 0); assert(rmdir(subdir) == 0); assert(rmdir(dir) == 0);
     free(before); free(after); free(file); free(subdir); free(missing); free(absolute);
 }
+static void test_read_only_and_binary_view(void) {
+    unsigned char bytes[] = {0, 255, 'A', '\n'};
+    size_t length;
+    wchar_t *view = hex_document(bytes, sizeof bytes, 70, &length);
+    assert(!wcscmp(view, L"00000000: 00 FF 41 0A |..A.|\n") && length == wcslen(view));
+    free(view);
+    view = hex_document(bytes, 2, 1, &length);
+    assert(!wcscmp(view, L"00000000: 00 |.|\n00000001: FF |.|\n")); free(view);
+    char path[] = "/tmp/gui-binary-test-XXXXXX";
+    int fd = mkstemp(path); assert(fd >= 0);
+    assert(write(fd, bytes, sizeof bytes) == (ssize_t)sizeof bytes); assert(close(fd) == 0);
+    document(L"preserved");
+    assert(!load(path) && !wcscmp(e.s, L"preserved"));
+    const OpenOptions binary = {true, true, 70};
+    assert(load_mode(path, &binary) && e.read_only && e.binary_view && !dirty());
+    size_t old = e.n; insert(L"x", 1); assert(e.n == old && !dirty());
+    e.anchor = 0; e.pos = 2; copy_selection(true);
+    assert(e.n == old && !dirty() && !wcscmp(e.clip, L"00"));
+    assert(!save());
+    FILE *f = fopen(path, "rb"); assert(f);
+    unsigned char actual[4]; assert(fread(actual, 1, sizeof actual, f) == sizeof actual); fclose(f);
+    assert(!memcmp(actual, bytes, sizeof bytes));
+    f = fopen(path, "wb"); assert(f); assert(fwrite("text", 1, 4, f) == 4); fclose(f);
+    const OpenOptions text = {true, false, 70};
+    assert(load_mode(path, &text) && e.read_only && !e.binary_view);
+    insert(L"z", 1); assert(!wcscmp(e.s, L"text"));
+    document(L"editable"); assert(!e.read_only && !e.binary_view);
+    assert(unlink(path) == 0);
+}
 int main(void) {
     assert(setlocale(LC_ALL, "C.UTF-8"));
     e.s = copy_text(L"", 0); e.saved = copy_text(L"", 0); e.preferred = -1;
     test_selection_and_undo(); test_search_and_replace();
     test_lines_and_history_limit(); test_utf8_and_disk();
     test_file_picker_lists();
+    test_read_only_and_binary_view();
     free(e.s); free(e.saved); free(e.path); free(e.clip);
     clear_history(e.undo, &e.un); clear_history(e.redo, &e.rn);
     puts("Core tests: OK"); return 0;

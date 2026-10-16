@@ -47,10 +47,12 @@ typedef struct {
     Snapshot undo[HISTORY], redo[HISTORY];
     size_t un, rn;
     wchar_t needle[FIELD], replacement[FIELD];
-    bool match_case, whole_word, dragging, crlf, bom;
+    bool match_case, whole_word, dragging, crlf, bom, read_only, binary_view;
     char message[256];
 } Editor;
 static Editor e;
+typedef struct { bool read_only, binary; unsigned line_width; } OpenOptions;
+static OpenOptions open_options = {false, false, 70};
 static bool screen_ready;
 static short palette_saved[3][4];
 static int palette_count;
@@ -86,6 +88,10 @@ static char *copy_path(const char *s) {
     return p;
 }
 static void message(const char *s) { snprintf(e.message, sizeof e.message, "%s", s); }
+static bool can_edit(void) {
+    if (!e.read_only) return true;
+    message("This document is read-only."); return false;
+}
 static bool dirty(void) { return wcscmp(e.s, e.saved) != 0; }
 static void clear_history(Snapshot *h, size_t *n) {
     while (*n) free(h[--*n].s);
@@ -103,6 +109,7 @@ static void checkpoint(void) {
     clear_history(e.redo, &e.rn);
 }
 static void undo_redo(bool redo) {
+    if (!can_edit()) return;
     Snapshot *from = redo ? e.redo : e.undo;
     Snapshot *to = redo ? e.undo : e.redo;
     size_t *fn = redo ? &e.rn : &e.un, *tn = redo ? &e.un : &e.rn;
@@ -131,6 +138,7 @@ static void splice(size_t a, size_t b, const wchar_t *s, size_t n) {
     e.s = p; e.n = len; e.pos = e.anchor = a + n; e.preferred = -1;
 }
 static void insert(const wchar_t *s, size_t n) {
+    if (!can_edit()) return;
     size_t a, b; range(&a, &b);
     if (!n && a == b) return;
     checkpoint(); splice(a, b, s, n);
@@ -139,7 +147,7 @@ static void copy_selection(bool cut) {
     size_t a, b; range(&a, &b);
     if (a == b) return;
     free(e.clip); e.clip = copy_text(e.s + a, b - a); e.clip_n = b - a;
-    if (cut) { checkpoint(); splice(a, b, L"", 0); }
+    if (cut && can_edit()) { checkpoint(); splice(a, b, L"", 0); }
 }
 static size_t line_start(size_t p) { while (p && e.s[p - 1] != L'\n') --p; return p; }
 static size_t line_end(size_t p) { while (p < e.n && e.s[p] != L'\n') ++p; return p; }
@@ -223,7 +231,8 @@ static void draw(void) {
     wide_at(LINES - 2, 0, L'└'); wide_at(LINES - 2, COLS - 1, L'┘');
     attrset(COLOR_PAIR(SHADOW)); mvhline(1, 1, ' ', width);
     char title[1024];
-    snprintf(title, sizeof title, " %s%s ", e.path ? e.path : "UNTITLED1", dirty() ? " *" : "");
+    snprintf(title, sizeof title, " %s%s%s ", e.path ? e.path : "UNTITLED1", dirty() ? " *" : "",
+             e.binary_view ? " [Binary / Read-only]" : e.read_only ? " [Read-only]" : "");
     int title_len = (int)strlen(title);
     int title_x = title_len < width ? (COLS - title_len) / 2 : 1;
     attrset(COLOR_PAIR(BAR));
@@ -347,6 +356,7 @@ static void field_key(wchar_t *s, size_t *pos, size_t cap, wint_t c, int type) {
 #include "file_picker.h"
 
 static bool save_to(bool save_as) {
+    if (!can_edit()) return false;
     bool prompted = save_as || !e.path;
     char *path = e.path ? copy_path(e.path) : NULL;
     if (prompted && !path_prompt("Save As", &path)) { free(path); return false; }
@@ -392,12 +402,39 @@ static void reset_document(wchar_t *s, size_t n, char *path, bool crlf, bool bom
     free(e.s); free(e.saved); free(e.path);
     e.s = s; e.n = n; e.path = path; e.saved = copy_text(s, n);
     e.pos = e.anchor = e.top = 0; e.left = 0; e.preferred = -1; e.crlf = crlf; e.bom = bom;
+    e.read_only = e.binary_view = false;
     clear_history(e.undo, &e.un); clear_history(e.redo, &e.rn);
 }
-static bool load(const char *path) {
+static wchar_t *hex_document(const unsigned char *bytes, size_t n, unsigned width, size_t *length) {
+    if (width < 1 || width > 256) width = 70;
+    size_t rows = n / width + (n % width != 0);
+    if (n > SIZE_MAX / 4 || rows > (SIZE_MAX - n * 4 - 1) / 24) die("File is too large.");
+    size_t cap = n * 4 + rows * 24 + 1;
+    if (cap > SIZE_MAX / sizeof(wchar_t)) die("File is too large.");
+    wchar_t *out = alloc(cap * sizeof(*out)); size_t at = 0;
+    static const wchar_t digits[] = L"0123456789ABCDEF";
+    for (size_t off = 0; off < n;) {
+        char address[32]; int len = snprintf(address, sizeof address, "%08zx: ", off);
+        for (int i = 0; i < len; ++i) out[at++] = (wchar_t)address[i];
+        size_t count = n - off < width ? n - off : width;
+        for (size_t i = 0; i < count; ++i) {
+            unsigned char c = bytes[off + i];
+            out[at++] = digits[c >> 4]; out[at++] = digits[c & 15]; out[at++] = L' ';
+        }
+        out[at++] = L'|';
+        for (size_t i = 0; i < count; ++i) {
+            unsigned char c = bytes[off + i]; out[at++] = c >= 32 && c < 127 ? (wchar_t)c : L'.';
+        }
+        out[at++] = L'|'; out[at++] = L'\n'; off += count;
+    }
+    out[at] = 0; *length = at; return out;
+}
+static bool load_mode(const char *path, const OpenOptions *options) {
     FILE *f = fopen(path, "rb");
     if (!f) {
-        if (errno == ENOENT) { reset_document(copy_text(L"", 0), 0, copy_path(path), false, false); return true; }
+        if (errno == ENOENT && !options->read_only && !options->binary) {
+            reset_document(copy_text(L"", 0), 0, copy_path(path), false, false); return true;
+        }
         message(strerror(errno)); return false;
     }
     size_t n = 0, cap = 4096; char *bytes = alloc(cap);
@@ -410,6 +447,13 @@ static bool load(const char *path) {
         if (!got) break;
     }
     bool ok = !ferror(f); fclose(f);
+    if (options->binary) {
+        if (!ok) { free(bytes); message("Cannot read binary file."); return false; }
+        size_t len; wchar_t *view = hex_document((unsigned char *)bytes, n, options->line_width, &len);
+        free(bytes); reset_document(view, len, copy_path(path), false, false);
+        e.read_only = e.binary_view = true;
+        message("Binary hex view: read-only. Line Width is bytes per row."); return true;
+    }
     if (n > SIZE_MAX / sizeof(wchar_t) - 1) die("File is too large.");
     wchar_t *text = alloc((n + 1) * sizeof(*text)); size_t len = 0, off = 0;
     bool bom = n >= 3 && memcmp(bytes, "\xef\xbb\xbf", 3) == 0, crlf = false;
@@ -424,7 +468,10 @@ static bool load(const char *path) {
     }
     text[len] = 0; free(bytes);
     if (!ok) { free(text); message("Cannot read file: valid UTF-8 text without NUL bytes is required."); return false; }
-    reset_document(text, len, copy_path(path), crlf, bom); return true;
+    reset_document(text, len, copy_path(path), crlf, bom); e.read_only = options->read_only; return true;
+}
+static bool load(const char *path) {
+    const OpenOptions options = {false, false, 70}; return load_mode(path, &options);
 }
 static bool word(wchar_t c) { return iswalnum(c) || c == L'_'; }
 static bool matches(size_t p) {
@@ -448,6 +495,7 @@ static bool find_next(size_t from) {
     message("Text not found."); return false;
 }
 static bool replace_one(void) {
+    if (!can_edit()) return false;
     size_t a, b; range(&a, &b);
     if (b - a != wcslen(e.needle) || !matches(a)) {
         if (!find_next(e.pos)) return false;
@@ -456,6 +504,7 @@ static bool replace_one(void) {
     checkpoint(); splice(a, b, e.replacement, wcslen(e.replacement)); return true;
 }
 static bool replace_all(void) {
+    if (!can_edit()) return false;
     if (!e.needle[0]) return false;
     size_t count = 0, n = wcslen(e.needle), r = wcslen(e.replacement), p = 0;
     while (p <= e.n) {
@@ -467,6 +516,7 @@ static bool replace_all(void) {
     snprintf(e.message, sizeof e.message, "%zu replacements.", count); return count != 0;
 }
 static void search_dialog(bool replacing) {
+    if (replacing && !can_edit()) return;
     int height = replacing ? 12 : 10, width = replacing ? 50 : 42;
     if (small_screen(height, width)) return;
     int fields = replacing ? 2 : 1, focus = 0, buttons = replacing ? 4 : 3;
@@ -603,7 +653,7 @@ static bool action(int a) {
     if (a == NEW && may_discard()) reset_document(copy_text(L"", 0), 0, NULL, false, false);
     else if (a == OPEN) {
         if (!may_discard()) return true;
-        char *path = NULL; if (path_prompt("Open File", &path)) load(path); free(path);
+        char *path = NULL; if (path_prompt("Open", &path)) load_mode(path, &open_options); free(path);
     } else if (a == SAVE) save();
     else if (a == SAVE_AS) save_to(true);
     else if (a == UNDO) undo_redo(false);
@@ -695,6 +745,7 @@ static bool handle(wint_t c, int type) {
     } else if (c == K_CTRLRIGHT) {
         size_t p = e.pos; while (p < e.n && word(e.s[p])) ++p; while (p < e.n && !word(e.s[p])) ++p; move_to(p, false, false);
     } else if (c == KEY_BACKSPACE || c == KEY_DC) {
+        if (!can_edit()) return true;
         size_t a, b; range(&a, &b);
         if (a == b) { if (c == KEY_BACKSPACE && a) --a; else if (c == KEY_DC && b < e.n) ++b; }
         if (a != b) { checkpoint(); splice(a, b, L"", 0); }

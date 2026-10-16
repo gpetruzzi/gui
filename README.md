@@ -13,6 +13,7 @@ The `c-rewrite` branch contains new C code, not a translation of Microsoft Edit'
 - No line numbers and no current-line highlight. Only explicitly selected text changes color.
 - Gray dialogs with white title strips, dotted input fields, checkboxes and white buttons with half-cell black shadows.
 - Open and Save As use a classic two-pane browser: File Name, current path, Existing Files and Directories, with OK, Cancel and Help buttons. Use Tab to move between controls, arrows to select an entry and Enter to enter a directory. Saving to another existing file asks before replacing it.
+- Open has a taller Files pane and a shorter Directories pane, followed by Open Read-only, Open Binary and Line Width. Read-only blocks edits and saving. Open Binary opens a **read-only hexadecimal view**, not a binary editor; Line Width is the number of source bytes per row (1–256, default 70). It is disabled for ordinary text files.
 
 The terminal font controls the exact appearance of characters and shadows.
 
@@ -68,13 +69,13 @@ After validating the prototype, `make install` installs to `/usr/local/bin` by d
 
 ## Validation
 
-Core tests cover selection, undo/redo, search, replacement, mouse coordinate mapping, UTF-8/CRLF file I/O, and file browser directory scanning. Updated tests have not been run by the assistant.
+Core tests cover selection, undo/redo, search, replacement, mouse coordinate mapping, UTF-8/CRLF file I/O, file browser directory scanning, read-only protection and binary hex views. Updated tests have not been run by the assistant.
 
 On Linux, also check all selection shortcuts, menu activation, dialog focus, terminal resize, canceled exits with unsaved changes, and failed saves. Compare the appearance against the classic editor references.
 
 ## Current scope
 
-One open document, literal search without regular expressions, and UTF-8 text files. Binary files, NUL bytes and invalid UTF-8 are rejected. UTF-8 BOM and uniform LF/CRLF line endings are preserved. Mixed line endings are normalized to CRLF when CRLF is present. Saving over symbolic links is not supported.
+One open document and literal search without regular expressions. Text editing requires UTF-8 without NUL bytes; other files can be inspected using Open Binary, a read-only hex view. UTF-8 BOM and uniform LF/CRLF line endings are preserved. Mixed line endings are normalized to CRLF when CRLF is present. Saving over symbolic links is not supported.
 
 The document and up to 64 undo states are stored as memory copies, so this prototype is intended for small and medium text files. Editing operates on Unicode code points; complex emoji and combining sequences are not yet treated as indivisible grapheme clusters.
 

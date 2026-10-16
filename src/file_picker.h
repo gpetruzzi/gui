@@ -60,11 +60,11 @@ static bool file_name_set(wchar_t *text, size_t *pos, const char *name) {
     if (n == (size_t)-1 || n >= FIELD) { message("File name is not valid UTF-8 or is too long."); return false; }
     memcpy(text, next, (n + 1) * sizeof(*text)); *pos = n; return true;
 }
-static void list_draw(Box b, int x, int width, int rows, FileList *list,
+static void list_draw(Box b, int top_row, int x, int width, int rows, FileList *list,
                       size_t selected, size_t *scroll, bool focus) {
     if (selected < *scroll) *scroll = selected;
     if (selected >= *scroll + (size_t)rows) *scroll = selected - (size_t)rows + 1;
-    int top = b.y + 7, left = b.x + x;
+    int top = b.y + top_row, left = b.x + x;
     attrset(COLOR_PAIR(DIALOG));
     for (int col = 1; col < width - 1; ++col) {
         wide_at(top, left + col, L'─'); wide_at(top + rows + 1, left + col, L'─');
@@ -92,7 +92,14 @@ static bool path_prompt(const char *title, char **out) {
     if (small_screen(18, 50)) return false;
     int height = LINES - 2 < 24 ? LINES - 2 : 24;
     int width = 50;
-    int pane_width = (width - 7) / 2, right = width - pane_width - 2, rows = height - 13;
+    bool opening = !strcmp(title, "Open");
+    OpenOptions options = open_options;
+    wchar_t line_width[8]; swprintf(line_width, 8, L"%u", options.line_width);
+    size_t width_pos = wcslen(line_width);
+    int ok_focus = opening ? 6 : 3, total_focus = ok_focus + 3;
+    int pane_width = (width - 7) / 2, right = width - pane_width - 2;
+    int list_top = opening ? 5 : 7, rows = height - (opening ? 11 : 13);
+    int dir_rows = opening ? rows - 5 : rows, option_row = list_top + dir_rows + 3;
     char *dir = realpath(".", NULL);
     if (!dir) { message(strerror(errno)); return false; }
     wchar_t name[FIELD] = {0}; size_t pos = 0;
@@ -115,19 +122,40 @@ static bool path_prompt(const char *title, char **out) {
         Box b = box_open(title, height, width);
         attrset(COLOR_PAIR(DIALOG));
         text_at(b.y + 2, b.x + 2, "File Name:", 10);
-        text_at(b.y + 4, b.x + 2, dir, width - 4);
-        text_at(b.y + 6, b.x + 3, "Existing Files:", pane_width - 2);
-        text_at(b.y + 6, b.x + right + 1, "Directories:", pane_width - 2);
-        list_draw(b, 2, pane_width, rows, &files, selected[0], &scroll[0], focus == 1);
-        list_draw(b, right, pane_width, rows, &dirs, selected[1], &scroll[1], focus == 2);
-        for (int i = 0; i < 3; ++i) button(b, height - 3, bx[i], labels[i], focus == i + 3);
+        text_at(b.y + (opening ? 3 : 4), b.x + 2, dir, width - 4);
+        text_at(b.y + list_top - 1, b.x + 3, opening ? "Files:" : "Existing Files:", pane_width - 2);
+        text_at(b.y + list_top - 1, b.x + right + 1, "Directories:", pane_width - 2);
+        list_draw(b, list_top, 2, pane_width, rows, &files, selected[0], &scroll[0], focus == 1);
+        list_draw(b, list_top, right, pane_width, dir_rows, &dirs, selected[1], &scroll[1], focus == 2);
+        if (opening) {
+            char label[32]; attrset(COLOR_PAIR(DIALOG));
+            snprintf(label, sizeof label, "[%c] Open Read-only", options.read_only ? 'X' : ' ');
+            text_at(b.y + option_row, b.x + right, label, pane_width);
+            if (focus == 3) mvchgat(b.y + option_row, b.x + right, 3, A_REVERSE, DIALOG, NULL);
+            snprintf(label, sizeof label, "[%c] Open Binary", options.binary ? 'X' : ' ');
+            text_at(b.y + option_row + 1, b.x + right, label, pane_width);
+            if (focus == 4) mvchgat(b.y + option_row + 1, b.x + right, 3, A_REVERSE, DIALOG, NULL);
+            if (!options.binary) attron(A_DIM);
+            text_at(b.y + option_row + 3, b.x + right, "Line Width:", 11);
+            field(b, option_row + 3, right + 12, 4, line_width, width_pos, false);
+            if (!options.binary) mvchgat(b.y + option_row + 3, b.x + right, pane_width, A_DIM, DIALOG, NULL);
+        }
+        for (int i = 0; i < 3; ++i) button(b, height - 3, bx[i], labels[i], focus == i + ok_focus);
         if (help) footer("Tab=Next Field  Arrows=Select  Enter=Open Directory/OK  Esc=Cancel");
         if (help) mvchgat(LINES - 1, 0, COLS, A_NORMAL, BAR, NULL);
-        field(b, 2, 13, width - 17, name, pos, focus == 0); refresh();
+        field(b, 2, 13, width - 17, name, pos, focus == 0);
+        if (opening && focus == 5) field(b, option_row + 3, right + 12, 4, line_width, width_pos, true);
+        refresh();
         wint_t c; int t = key(&c); if (t == ERR) continue;
         if (c == 27 || (t == KEY_CODE_YES && c == KEY_RESIZE)) break;
-        if (c == '\t') { focus = (focus + 1) % 6; continue; }
-        if (t == KEY_CODE_YES && c == KEY_BTAB) { focus = (focus + 5) % 6; continue; }
+        if (c == '\t') {
+            do { focus = (focus + 1) % total_focus; } while (opening && focus == 5 && !options.binary);
+            continue;
+        }
+        if (t == KEY_CODE_YES && c == KEY_BTAB) {
+            do { focus = (focus + total_focus - 1) % total_focus; } while (opening && focus == 5 && !options.binary);
+            continue;
+        }
         if (t == KEY_CODE_YES && c == KEY_F(1)) { help = !help; continue; }
         if (t == KEY_CODE_YES && c == KEY_MOUSE) {
             MEVENT m; if (getmouse(&m) != OK) continue;
@@ -138,19 +166,25 @@ static bool path_prompt(const char *title, char **out) {
 #endif
                              ))) continue;
             if (y == 2) { focus = 0; continue; }
-            if (y >= 8 && y < 8 + rows) {
+            if (opening && x >= right && x < right + pane_width &&
+                (y == option_row || y == option_row + 1 || y == option_row + 3)) {
+                if (y == option_row + 3) { if (options.binary) focus = 5; continue; }
+                focus = y == option_row ? 3 : 4; c = ' '; t = OK;
+            } else if (y >= list_top + 1 && y < list_top + 1 + rows) {
                 int pane = x >= 2 && x < 2 + pane_width ? 0 : x >= right && x < right + pane_width ? 1 : -1;
                 if (pane < 0) continue;
                 FileList *list = pane ? &dirs : &files; focus = pane + 1;
+                int visible_rows = pane ? dir_rows : rows;
+                if (y >= list_top + 1 + visible_rows) continue;
                 if (!list->n) continue;
-                size_t at = scroll[pane] + (size_t)(y - 8);
+                size_t at = scroll[pane] + (size_t)(y - list_top - 1);
                 int edge = (pane ? right : 2) + pane_width - 2;
-                if ((m.bstate & BUTTON4_PRESSED) || (x == edge && y == 8))
+                if ((m.bstate & BUTTON4_PRESSED) || (x == edge && y == list_top + 1))
                     at = selected[pane] ? selected[pane] - 1 : 0;
 #ifdef BUTTON5_PRESSED
                 else if (m.bstate & BUTTON5_PRESSED) at = selected[pane] + 1;
 #endif
-                else if (x == edge && y == 7 + rows) at = selected[pane] + 1;
+                else if (x == edge && y == list_top + visible_rows) at = selected[pane] + 1;
                 if (at >= list->n) at = list->n - 1;
                 selected[pane] = at;
                 if (!pane) file_name_set(name, &pos, list->names[at]);
@@ -161,12 +195,25 @@ static bool path_prompt(const char *title, char **out) {
                 for (int i = 0; i < 3; ++i)
                     if (x >= bx[i] && x < bx[i] + (int)strlen(labels[i]) + 2) hit = i;
                 if (hit < 0) continue;
-                focus = hit + 3; c = '\n'; t = OK;
+                focus = hit + ok_focus; c = '\n'; t = OK;
             } else continue;
         }
         bool enter = c == '\n' || c == '\r' || (t == KEY_CODE_YES && c == KEY_ENTER);
+        if (opening && (focus == 3 || focus == 4)) {
+            if (enter || c == ' ') {
+                if (focus == 3 && !options.binary) options.read_only = !options.read_only;
+                if (focus == 4) { options.binary = !options.binary; if (options.binary) options.read_only = true; }
+            }
+            continue;
+        }
+        if (opening && focus == 5 && !enter) {
+            if (t == KEY_CODE_YES || c == 8 || c == 127 || (c >= '0' && c <= '9'))
+                field_key(line_width, &width_pos, 5, c, t);
+            continue;
+        }
         if (focus == 1 || focus == 2) {
             int pane = focus - 1; FileList *list = pane ? &dirs : &files;
+            int visible_rows = pane ? dir_rows : rows;
             size_t old = selected[pane];
             if (t == KEY_CODE_YES && c == KEY_LEFT) { focus = 1; continue; }
             if (t == KEY_CODE_YES && c == KEY_RIGHT) { focus = 2; continue; }
@@ -176,9 +223,9 @@ static bool path_prompt(const char *title, char **out) {
             else if (t == KEY_CODE_YES && c == KEY_HOME) selected[pane] = 0;
             else if (t == KEY_CODE_YES && c == KEY_END) selected[pane] = list->n - 1;
             else if (t == KEY_CODE_YES && c == KEY_NPAGE) {
-                size_t next = selected[pane] + (size_t)rows; selected[pane] = next < list->n ? next : list->n - 1;
+                size_t next = selected[pane] + (size_t)visible_rows; selected[pane] = next < list->n ? next : list->n - 1;
             } else if (t == KEY_CODE_YES && c == KEY_PPAGE)
-                selected[pane] = selected[pane] > (size_t)rows ? selected[pane] - (size_t)rows : 0;
+                selected[pane] = selected[pane] > (size_t)visible_rows ? selected[pane] - (size_t)visible_rows : 0;
             if (!pane && (old != selected[pane] || enter))
                 file_name_set(name, &pos, list->names[selected[pane]]);
             if (!enter) continue;
@@ -189,15 +236,24 @@ static bool path_prompt(const char *title, char **out) {
             } else { if (!next) message(strerror(errno)); free(next); }
             continue;
         }
-        if (enter || (c == ' ' && focus >= 3)) {
-            if (focus == 4) break;
-            if (focus == 5) { help = !help; continue; }
+        if (enter || (c == ' ' && focus >= ok_focus)) {
+            if (focus == ok_focus + 1) break;
+            if (focus == ok_focus + 2) { help = !help; continue; }
+            if (opening && options.binary) {
+                wchar_t *end; unsigned long value = wcstoul(line_width, &end, 10);
+                if (!line_width[0] || *end || value < 1 || value > 256) {
+                    message("Binary Line Width must be between 1 and 256 bytes."); focus = 5; continue;
+                }
+                options.line_width = (unsigned)value;
+            }
             if (!name[0]) { focus = 0; continue; }
             size_t n = wcstombs(NULL, name, 0);
             if (n == (size_t)-1) { message("File name is not valid UTF-8."); continue; }
             char *bytes = alloc(n + 1); wcstombs(bytes, name, n + 1);
             char *candidate = path_join(dir, bytes); free(bytes); struct stat st;
-            if (stat(candidate, &st) == 0 && S_ISDIR(st.st_mode)) {
+            int status = stat(candidate, &st);
+            if (opening && status != 0) { message(strerror(errno)); free(candidate); continue; }
+            if (status == 0 && S_ISDIR(st.st_mode)) {
                 char *next = realpath(candidate, NULL); free(candidate);
                 if (next && directory_scan(next, &files, &dirs)) {
                     free(dir); dir = next; name[0] = 0; pos = 0;
@@ -205,6 +261,7 @@ static bool path_prompt(const char *title, char **out) {
                 } else free(next);
                 continue;
             }
+            if (opening) open_options = options;
             free(*out); *out = candidate; accepted = true; break;
         } else if (focus == 0) field_key(name, &pos, FIELD, c, t);
     }
