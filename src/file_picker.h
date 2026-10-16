@@ -78,14 +78,21 @@ static void list_draw(Box b, int top_row, int x, int width, int rows, FileList *
         attrset(COLOR_PAIR(focus && i == selected ? SELECT : DIALOG));
         mvhline(top + row + 1, left + 1, ' ', width - 3);
         if (i < list->n) text_at(top + row + 1, left + 1, list->names[i], width - 4);
-        attrset(COLOR_PAIR(BAR)); mvaddch(top + row + 1, left + width - 2, ' ');
+        attrset(COLOR_PAIR(SCROLL_TRACK)); mvaddch(top + row + 1, left + width - 2, ACS_CKBOARD);
     }
-    attrset(COLOR_PAIR(BUTTON));
+    attrset(COLOR_PAIR(SCROLL_ARROW));
     wide_at(top + 1, left + width - 2, L'↑');
     wide_at(top + rows, left + width - 2, L'↓');
-    if (rows > 2 && list->n > (size_t)rows) {
-        int thumb = 1 + (int)((double)selected / (double)(list->n - 1) * (rows - 3));
-        attrset(COLOR_PAIR(DIALOG)); wide_at(top + 1 + thumb, left + width - 2, L'▒');
+    if (rows > 2) {
+        int track = rows - 2, thumb_size = track, thumb_top = 0;
+        if (list->n > (size_t)rows) {
+            thumb_size = (int)((double)rows / (double)list->n * track);
+            if (thumb_size < 1) thumb_size = 1;
+            thumb_top = (int)((double)*scroll / (double)(list->n - (size_t)rows) * (track - thumb_size));
+            if (thumb_top > track - thumb_size) thumb_top = track - thumb_size;
+        }
+        attrset(COLOR_PAIR(BUTTON));
+        for (int i = 0; i < thumb_size; ++i) mvaddch(top + 2 + thumb_top + i, left + width - 2, ' ');
     }
 }
 static bool path_prompt(const char *title, char **out) {
@@ -121,22 +128,22 @@ static bool path_prompt(const char *title, char **out) {
     for (;;) {
         Box b = box_open(title, height, width);
         attrset(COLOR_PAIR(DIALOG));
-        text_at(b.y + 2, b.x + 2, "File Name:", 10);
+        hot_label(b.y + 2, b.x + 2, "File Name:", 10, 5);
         text_at(b.y + (opening ? 3 : 4), b.x + 2, dir, width - 4);
-        text_at(b.y + list_top - 1, b.x + 3, opening ? "Files:" : "Existing Files:", pane_width - 2);
-        text_at(b.y + list_top - 1, b.x + right + 1, "Directories:", pane_width - 2);
+        hot_label(b.y + list_top - 1, b.x + 3, opening ? "Files:" : "Existing Files:", pane_width - 2, opening ? 0 : 9);
+        hot_label(b.y + list_top - 1, b.x + right + 1, "Directories:", pane_width - 2, 0);
         list_draw(b, list_top, 2, pane_width, rows, &files, selected[0], &scroll[0], focus == 1);
         list_draw(b, list_top, right, pane_width, dir_rows, &dirs, selected[1], &scroll[1], focus == 2);
         if (opening) {
             char label[32]; attrset(COLOR_PAIR(DIALOG));
             snprintf(label, sizeof label, "[%c] Open Read-only", options.read_only ? 'X' : ' ');
-            text_at(b.y + option_row, b.x + right, label, pane_width);
+            hot_label(b.y + option_row, b.x + right, label, pane_width, 9);
             if (focus == 3) mvchgat(b.y + option_row, b.x + right, 3, A_REVERSE, DIALOG, NULL);
             snprintf(label, sizeof label, "[%c] Open Binary", options.binary ? 'X' : ' ');
-            text_at(b.y + option_row + 1, b.x + right, label, pane_width);
+            hot_label(b.y + option_row + 1, b.x + right, label, pane_width, 9);
             if (focus == 4) mvchgat(b.y + option_row + 1, b.x + right, 3, A_REVERSE, DIALOG, NULL);
             if (!options.binary) attron(A_DIM);
-            text_at(b.y + option_row + 3, b.x + right, "Line Width:", 11);
+            hot_label(b.y + option_row + 3, b.x + right, "Line Width:", 11, 5);
             field(b, option_row + 3, right + 12, 4, line_width, width_pos, false);
             if (!options.binary) mvchgat(b.y + option_row + 3, b.x + right, pane_width, A_DIM, DIALOG, NULL);
         }
@@ -146,7 +153,19 @@ static bool path_prompt(const char *title, char **out) {
         field(b, 2, 13, width - 17, name, pos, focus == 0);
         if (opening && focus == 5) field(b, option_row + 3, right + 12, 4, line_width, width_pos, true);
         refresh();
-        wint_t c; int t = key(&c); if (t == ERR) continue;
+        wint_t c; int t = dialog_key(&c); if (t == ERR) continue;
+        if (t == ALT_INPUT) {
+            if (c == 'n') { focus = 0; continue; }
+            if (c == 'f') { focus = 1; continue; }
+            if (c == 'd') { focus = 2; continue; }
+            if (c == 'r' && opening) { focus = 3; c = ' '; t = OK; }
+            else if (c == 'b' && opening) { focus = 4; c = ' '; t = OK; }
+            else if (c == 'w' && opening && options.binary) { focus = 5; continue; }
+            else if (c == 'o') { focus = ok_focus; c = '\n'; t = OK; }
+            else if (c == 'c') break;
+            else if (c == 'h') { help = !help; continue; }
+            else continue;
+        }
         if (c == 27 || (t == KEY_CODE_YES && c == KEY_RESIZE)) break;
         if (c == '\t') {
             do { focus = (focus + 1) % total_focus; } while (opening && focus == 5 && !options.binary);
@@ -185,6 +204,8 @@ static bool path_prompt(const char *title, char **out) {
                 else if (m.bstate & BUTTON5_PRESSED) at = selected[pane] + 1;
 #endif
                 else if (x == edge && y == list_top + visible_rows) at = selected[pane] + 1;
+                else if (x == edge && visible_rows > 3)
+                    at = (size_t)((double)(y - list_top - 2) / (double)(visible_rows - 3) * (double)(list->n - 1));
                 if (at >= list->n) at = list->n - 1;
                 selected[pane] = at;
                 if (!pane) file_name_set(name, &pos, list->names[at]);
@@ -275,7 +296,12 @@ static bool overwrite_prompt(const char *path) {
         attrset(COLOR_PAIR(DIALOG)); text_at(b.y + 2, b.x + 2, path, 54);
         text_at(b.y + 3, b.x + 2, "This file exists. Replace it?", 54);
         button(b, 5, 8, "Replace", focus == 0); button(b, 5, 35, "Cancel", focus == 1); refresh();
-        wint_t c; int t = key(&c); if (t == ERR) continue;
+        wint_t c; int t = dialog_key(&c); if (t == ERR) continue;
+        if (t == ALT_INPUT) {
+            if (c == 'r') return true;
+            if (c == 'c') return false;
+            continue;
+        }
         if (c == 27 || (t == KEY_CODE_YES && c == KEY_RESIZE)) return false;
         if (c == '\t' || (t == KEY_CODE_YES && (c == KEY_LEFT || c == KEY_RIGHT || c == KEY_BTAB))) focus = !focus;
         else if (c == '\n' || c == '\r' || (t == KEY_CODE_YES && c == KEY_ENTER)) return focus == 0;

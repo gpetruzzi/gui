@@ -32,7 +32,8 @@
 #define K_PASTEBEGIN (KEY_MAX + 9)
 #define K_PASTEEND (KEY_MAX + 10)
 
-enum { EDIT = 1, BAR, SELECT, DIALOG, BUTTON, SHADOW, STATUS, FRAME, TITLE, TITLE_RULE, MENU_ACTIVE, DISABLED };
+enum { EDIT = 1, BAR, SELECT, DIALOG, BUTTON, SHADOW, STATUS, FRAME, TITLE, TITLE_RULE, MENU_ACTIVE, HOTKEY, SCROLL_ARROW, SCROLL_TRACK, DISABLED };
+#define ALT_INPUT (-2)
 #define EDIT_TOP 2
 #define EDIT_LEFT 1
 static const char *menu_names[] = {"File", "Edit", "Search", "View", "Options", "Help"};
@@ -209,6 +210,12 @@ static void text_at(int y, int x, const char *s, int max) {
     if (y >= 0 && y < LINES && x >= 0 && x < COLS && max > 0)
         mvaddnstr(y, x, s, max < COLS - x ? max : COLS - x);
 }
+static void hot_label(int y, int x, const char *label, int max, int accelerator) {
+    attrset(COLOR_PAIR(DIALOG)); text_at(y, x, label, max);
+    if (accelerator >= 0 && accelerator < max && (size_t)accelerator < strlen(label) &&
+        y >= 0 && y < LINES && x + accelerator >= 0 && x + accelerator < COLS)
+        mvchgat(y, x + accelerator, 1, A_NORMAL, HOTKEY, NULL);
+}
 static void wide_at(int y, int x, wchar_t ch) {
     if (x < 0 || y < 0 || x >= COLS || y >= LINES) return;
     wchar_t s[2] = {ch, 0};
@@ -334,15 +341,29 @@ static Box box_open(const char *title, int height, int width) {
 static void button(Box b, int y, int x, const char *label, bool active) {
     int len = (int)strlen(label);
     attrset(COLOR_PAIR(DIALOG));
-    /* Foreground black, parent gray behind half-cell shadow. */
-    for (int i = 1; i <= len + 2; ++i) wide_at(b.y + y + 1, b.x + x + i, L'▀');
-    wide_at(b.y + y, b.x + x + len + 2, L'▄');
+    /* Thin black edge rather than a half-row slab; shared by every dialog. */
+    for (int i = 1; i <= len + 2; ++i) wide_at(b.y + y + 1, b.x + x + i, L'▔');
+    wide_at(b.y + y, b.x + x + len + 2, L'▁');
     attrset(COLOR_PAIR(BUTTON));
     wide_at(b.y + y, b.x + x, active ? L'►' : L' ');
     text_at(b.y + y, b.x + x + 1, label, len);
     wide_at(b.y + y, b.x + x + len + 1, active ? L'◄' : L' ');
+    int accelerator = 0;
+    while (label[accelerator] == ' ') ++accelerator;
+    if (label[accelerator]) mvchgat(b.y + y, b.x + x + 1 + accelerator, 1, A_UNDERLINE, BUTTON, NULL);
 }
 static int key(wint_t *value) { return get_wch(value); }
+static int dialog_key(wint_t *value) {
+    int type = key(value);
+    if (type != OK || *value != 27) return type;
+    wint_t next; timeout(60); int next_type = key(&next); timeout(-1);
+    if (next_type == OK && next < 128 && iswalpha(next)) {
+        *value = towlower(next); return ALT_INPUT;
+    }
+    if (next_type == KEY_CODE_YES) ungetch((int)next);
+    else if (next_type == OK) unget_wch(next);
+    *value = 27; return OK;
+}
 static bool small_screen(int h, int w) {
     if (LINES >= h + 2 && COLS >= w + 2) return false;
     message("Enlarge the terminal to open this dialog."); return true;
@@ -356,8 +377,14 @@ static int confirm(const char *title, const char *prompt) {
         button(b, 4, 3, "Save", choice == 0);
         button(b, 4, 20, "Discard", choice == 1);
         button(b, 4, 39, "Cancel", choice == 2);
-        refresh(); wint_t c; int t = key(&c);
+        refresh(); wint_t c; int t = dialog_key(&c);
         if (t == ERR) continue;
+        if (t == ALT_INPUT) {
+            if (c == 's') return 0;
+            if (c == 'd') return 1;
+            if (c == 'c') return 2;
+            continue;
+        }
         if (t == KEY_CODE_YES && c == KEY_RESIZE) return 2;
         if (c == 27) return 2;
         if (c == '\t' || (t == KEY_CODE_YES && c == KEY_RIGHT)) choice = (choice + 1) % 3;
@@ -580,14 +607,14 @@ static void search_dialog(bool replacing) {
         Box b = box_open(replacing ? "Replace" : "Find", height, width);
         int opts = replacing ? 5 : 4, by = height - 3;
         attrset(COLOR_PAIR(DIALOG));
-        text_at(b.y + 2, b.x + 2, "Find What:", 12);
-        if (replacing) text_at(b.y + 3, b.x + 2, "Replace With:", 13);
+        hot_label(b.y + 2, b.x + 2, "Find What:", 12, 0);
+        if (replacing) hot_label(b.y + 3, b.x + 2, "Replace With:", 13, 0);
         char option[80];
         snprintf(option, sizeof option, "[%c] Match Whole Word Only", e.whole_word ? 'X' : ' ');
-        text_at(b.y + opts, b.x + 2, option, width - 4);
+        hot_label(b.y + opts, b.x + 2, option, width - 4, 10);
         if (focus == fields) mvchgat(b.y + opts, b.x + 2, 3, A_REVERSE, DIALOG, NULL);
         snprintf(option, sizeof option, "[%c] Match Case", e.match_case ? 'X' : ' ');
-        text_at(b.y + opts + 1, b.x + 2, option, width - 4);
+        hot_label(b.y + opts + 1, b.x + 2, option, width - 4, 4);
         if (focus == fields + 1) mvchgat(b.y + opts + 1, b.x + 2, 3, A_REVERSE, DIALOG, NULL);
         if (help) text_at(b.y + opts + 2, b.x + 2, "Tab: Next Field  Space: Toggle", width - 4);
         int button_focus = focus - fields - 2;
@@ -596,7 +623,18 @@ static void search_dialog(bool replacing) {
         field(b, 2, field_x, field_width, e.needle, pos[0], focus == 0);
         if (replacing) field(b, 3, field_x, field_width, e.replacement, pos[1], focus == 1);
         if (replacing && focus == 0) field(b, 2, field_x, field_width, e.needle, pos[0], true);
-        refresh(); wint_t c; int t = key(&c); if (t == ERR) continue;
+        refresh(); wint_t c; int t = dialog_key(&c); if (t == ERR) continue;
+        if (t == ALT_INPUT) {
+            if (c == 'f') { focus = 0; continue; }
+            if (c == 'r' && replacing) { focus = 1; continue; }
+            if (c == 'w') { e.whole_word = !e.whole_word; continue; }
+            if (c == 'm') { e.match_case = !e.match_case; continue; }
+            if (c == 'o') { focus = fields + 2; c = '\n'; t = OK; }
+            else if (c == 'a' && replacing) { focus = fields + 3; c = '\n'; t = OK; }
+            else if (c == 'c') return;
+            else if (c == 'h') { help = !help; continue; }
+            else continue;
+        }
         if (c == 27 || (t == KEY_CODE_YES && c == KEY_RESIZE)) return;
         int total = fields + 2 + buttons;
         if (c == '\t') { focus = (focus + 1) % total; continue; }
@@ -639,7 +677,12 @@ static void about(void) {
     text_at(b.y + 3, b.x + 4, "Original code. Interface with ncursesw.", 45);
     text_at(b.y + 4, b.x + 4, "A project by gpetruzzi. MIT License.", 45);
     button(b, 6, 21, "OK", true); refresh();
-    wint_t c; key(&c);
+    for (;;) {
+        wint_t c; int type = dialog_key(&c);
+        if (type == ERR) continue;
+        if (type == ALT_INPUT && c != 'o') continue;
+        break;
+    }
 }
 enum { NONE, NEW, OPEN, SAVE, QUIT, UNDO, REDO, COPY, CUT, PASTE, FIND, REPLACE, SELECT_ALL, ABOUT, NEXT, CASE, WHOLE, SAVE_AS, CLEAR };
 static bool action_enabled(int a) {
@@ -932,6 +975,8 @@ int main(int argc, char **argv) {
     init_pair(STATUS, COLOR_BLACK, gray); init_pair(FRAME, gray, blue); init_pair(TITLE, COLOR_BLACK, white);
     init_pair(TITLE_RULE, white, blue);
     init_pair(MENU_ACTIVE, white, COLOR_BLACK); init_pair(DISABLED, dark_gray, gray);
+    init_pair(HOTKEY, white, gray);
+    init_pair(SCROLL_ARROW, white, COLOR_BLACK); init_pair(SCROLL_TRACK, COLOR_BLACK, white);
     define_key("\033[1;2A", K_SUP); define_key("\033[1;2B", K_SDOWN);
     define_key("\033[1;2D", KEY_SLEFT); define_key("\033[1;2C", KEY_SRIGHT);
     define_key("\033[2;5~", K_COPY); define_key("\033[2;2~", K_PASTE);

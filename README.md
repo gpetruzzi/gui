@@ -8,11 +8,12 @@ The `c-rewrite` branch contains new C code, not a translation of Microsoft Edit'
 ## Classic appearance
 
 - English interface: File, Edit, Search, View, Options and Help.
-- Blue editing area with white text, a thin frame, and a centered file name over a black title strip.
+- Blue editing area with white text, a thin frame, and a centered file name along a thin white title rule.
 - Light gray menu bar and bottom help bar with black text.
 - The compact Edit menu contains Cut, Copy, Paste and Clear, with gray unavailable commands, a black selection bar and a contextual description in the bottom bar. Clear deletes only the selection and keeps the internal clipboard unchanged. Undo, Redo and Select All remain available through their keyboard shortcuts.
 - No line numbers and no current-line highlight. Only explicitly selected text changes color.
-- Gray dialogs with white title strips, dotted input fields, checkboxes and white buttons with half-cell black shadows.
+- Gray dialogs with white title strips, dotted input fields, checkboxes and white buttons with thin black shadows. Labels highlight their Alt access letter in white; button access letters are underlined in black for contrast against the white button face.
+- File and directory scrollbars use white arrows on black, a patterned track and a light proportional thumb. These styles are shared by all applicable dialogs.
 - Open and Save As use a classic two-pane browser: File Name, current path, Existing Files and Directories, with OK, Cancel and Help buttons. Use Tab to move between controls, arrows to select an entry and Enter to enter a directory. Saving to another existing file asks before replacing it.
 - Open has a taller Files pane and a shorter Directories pane, followed by Open Read-only, Open Binary and Line Width. Read-only blocks edits and saving. Open Binary opens a **read-only hexadecimal view**, not a binary editor; Line Width is the number of source bytes per row (1–256, default 70). It is disabled for ordinary text files.
 
@@ -47,6 +48,8 @@ The clipboard is internal in this prototype. To paste from another application, 
 To copy with the mouse, hold the left button and drag, release it, press Ctrl+C or choose Edit → Copy, then use Ctrl+V inside gui. The status bar reports the number of characters copied to gui's internal clipboard. Copying without a selection reports "No text selected." Drag handling preserves its anchor across repeated held-button events and ends on release, including outside the document.
 
 Use Tab and Shift+Tab to move between dialog controls, Space to toggle checkboxes, Enter to activate a control, and Esc to cancel. The mouse can place the cursor, select text, open menus and activate search dialog controls.
+
+Dialog Alt shortcuts: file browsers use N for File Name, F for Files, D for Directories, O for OK, C for Cancel and H for Help. Open adds R for Read-only, B for Binary and W for Line Width. Find/Replace use F for Find What, R for Replace With, W for Whole Word, M for Match Case, O for OK, A for All, C for Cancel and H for Help. Save confirmations use S for Save, D for Discard and C for Cancel.
 
 ## Build separately on Debian or Ubuntu
 
