@@ -283,10 +283,10 @@ static void button(Box b, int y, int x, const char *label, bool active) {
     /* Foreground black, parent gray behind half-cell shadow. */
     for (int i = 1; i <= len + 2; ++i) wide_at(b.y + y + 1, b.x + x + i, L'▀');
     wide_at(b.y + y, b.x + x + len + 2, L'▄');
-    attrset(COLOR_PAIR(active ? SELECT : BUTTON));
-    mvaddch(b.y + y, b.x + x, active ? '<' : ' ');
+    attrset(COLOR_PAIR(BUTTON));
+    wide_at(b.y + y, b.x + x, active ? L'►' : L' ');
     text_at(b.y + y, b.x + x + 1, label, len);
-    mvaddch(b.y + y, b.x + x + len + 1, active ? '>' : ' ');
+    wide_at(b.y + y, b.x + x + len + 1, active ? L'◄' : L' ');
 }
 static int key(wint_t *value) { return get_wch(value); }
 static bool small_screen(int h, int w) {
@@ -485,9 +485,15 @@ static bool replace_all(void) {
     snprintf(e.message, sizeof e.message, "%zu reemplazos.", count); return count != 0;
 }
 static void search_dialog(bool replacing) {
-    int height = replacing ? 13 : 10, width = 56;
+    int height = replacing ? 12 : 10, width = replacing ? 50 : 42;
     if (small_screen(height, width)) return;
     int fields = replacing ? 2 : 1, focus = 0, buttons = replacing ? 4 : 3;
+    int field_x = replacing ? 15 : 12, field_width = replacing ? 30 : 26;
+    const int search_x[] = {4, 17, 32}, replace_x[] = {2, 10, 23, 40};
+    const int *button_x = replacing ? replace_x : search_x;
+    const char *search_labels[] = {"  OK  ", "Cancelar", "Ayuda"};
+    const char *replace_labels[] = {"OK", "Todos", "Cancelar", "Ayuda"};
+    const char **button_labels = replacing ? replace_labels : search_labels;
     size_t pos[2] = {wcslen(e.needle), wcslen(e.replacement)};
     bool help = false;
     for (;;) {
@@ -498,26 +504,18 @@ static void search_dialog(bool replacing) {
         if (replacing) text_at(b.y + 3, b.x + 2, "Reemplazar:", 12);
         char option[80];
         snprintf(option, sizeof option, "[%c] Solo palabras completas", e.whole_word ? 'X' : ' ');
-        text_at(b.y + opts, b.x + 2, option, 50);
+        text_at(b.y + opts, b.x + 2, option, width - 4);
         if (focus == fields) mvchgat(b.y + opts, b.x + 2, 3, A_REVERSE, DIALOG, NULL);
         snprintf(option, sizeof option, "[%c] Distinguir mayúsculas/minúsculas", e.match_case ? 'X' : ' ');
-        text_at(b.y + opts + 1, b.x + 2, option, 50);
+        text_at(b.y + opts + 1, b.x + 2, option, width - 4);
         if (focus == fields + 1) mvchgat(b.y + opts + 1, b.x + 2, 3, A_REVERSE, DIALOG, NULL);
-        if (help) text_at(b.y + opts + 2, b.x + 2, "Tab: cambiar  Espacio: marcar  Esc: cancelar", 51);
+        if (help) text_at(b.y + opts + 2, b.x + 2, "Tab: cambiar  Espacio: marcar", width - 4);
         int button_focus = focus - fields - 2;
-        if (replacing) {
-            button(b, by, 2, "OK", button_focus == 0);
-            button(b, by, 10, "Todos", button_focus == 1);
-            button(b, by, 24, "Cancelar", button_focus == 2);
-            button(b, by, 43, "Ayuda", button_focus == 3);
-        } else {
-            button(b, by, 4, "  OK  ", button_focus == 0);
-            button(b, by, 22, "Cancelar", button_focus == 1);
-            button(b, by, 42, "Ayuda", button_focus == 2);
-        }
-        field(b, 2, 14, 36, e.needle, pos[0], focus == 0);
-        if (replacing) field(b, 3, 14, 36, e.replacement, pos[1], focus == 1);
-        if (replacing && focus == 0) field(b, 2, 14, 36, e.needle, pos[0], true);
+        for (int i = 0; i < buttons; ++i)
+            button(b, by, button_x[i], button_labels[i], button_focus == i);
+        field(b, 2, field_x, field_width, e.needle, pos[0], focus == 0);
+        if (replacing) field(b, 3, field_x, field_width, e.replacement, pos[1], focus == 1);
+        if (replacing && focus == 0) field(b, 2, field_x, field_width, e.needle, pos[0], true);
         refresh(); wint_t c; int t = key(&c); if (t == ERR) continue;
         if (c == 27 || (t == KEY_CODE_YES && c == KEY_RESIZE)) return;
         int total = fields + 2 + buttons;
@@ -531,8 +529,10 @@ static void search_dialog(bool replacing) {
             else if (y == opts) { e.whole_word = !e.whole_word; focus = fields; }
             else if (y == opts + 1) { e.match_case = !e.match_case; focus = fields + 1; }
             else if (y == by) {
-                int idx = replacing ? (x < 9 ? 0 : x < 22 ? 1 : x < 41 ? 2 : 3)
-                                    : (x < 20 ? 0 : x < 40 ? 1 : 2);
+                int idx = -1;
+                for (int i = 0; i < buttons; ++i)
+                    if (x >= button_x[i] && x < button_x[i] + (int)strlen(button_labels[i]) + 2) idx = i;
+                if (idx < 0) continue;
                 focus = fields + 2 + idx; c = '\n'; t = OK;
             }
         }
