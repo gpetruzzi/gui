@@ -47,4 +47,3 @@ En Linux ejecutar `cargo test --locked -p edit` y verificar visualmente colores,
 
 
 Proyecto original: https://github.com/microsoft/edit. Documentación original: [README-UPSTREAM.md](README-UPSTREAM.md).
-
