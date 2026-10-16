@@ -92,6 +92,38 @@ static void test_open_selected_file(void) {
     assert(unlink(file) == 0 && unlink(nested) == 0 && rmdir(folder) == 0 && rmdir(dir) == 0);
     free(previous); free(file); free(folder); free(nested);
 }
+static void test_untitled_open(void) {
+    char dir[] = "/tmp/gui-untitled-test-XXXXXX"; assert(mkdtemp(dir));
+    char *file = path_join(dir, "file.txt"); write_file(file, "hello");
+    OpenOptions options = {false, false, 70};
+    int blank = document_new(); assert(blank >= 0);
+    workspace_open(file, &options);
+    assert(active_document == blank && e.path && !strcmp(e.path, file));
+    int loaded = active_document;
+    blank = document_new(); assert(blank >= 0);
+    split_window();
+    workspace_open(file, &options);
+    assert(active_document == loaded && !documents[blank].s);
+    assert(panes[0].doc == loaded && panes[1].doc == loaded);
+    close_window();
+
+    /* A placeholder in another slot is removed after a successful open. */
+    blank = document_new(); assert(blank >= 0);
+    document_select(loaded);
+    options.read_only = true; workspace_open(file, &options);
+    assert(e.read_only && !documents[blank].s);
+
+    /* Preserve unnamed edits and preserve placeholders when opening fails. */
+    int edited = document_new(); assert(edited >= 0);
+    reset_document(copy_text(L"draft", 5), 5, NULL, false, false);
+    options.read_only = false; workspace_open(file, &options);
+    assert(documents[edited].s && !wcscmp(documents[edited].s, L"draft"));
+    blank = document_new(); assert(blank >= 0);
+    workspace_open(dir, &options);
+    assert(active_document == blank && !e.path && !e.n);
+    document_select(loaded); document_free(blank); document_free(edited);
+    assert(unlink(file) == 0 && rmdir(dir) == 0); free(file);
+}
 int main(void) {
     assert(setlocale(LC_ALL, "C.UTF-8"));
     /* Explicit terminfo and temporary streams avoid a physical display or TTY.
@@ -104,7 +136,7 @@ int main(void) {
         assert(init_pair((short)pair, COLOR_BLACK, COLOR_WHITE) == OK);
     e.s = copy_text(L"", 0); e.saved = copy_text(L"", 0); e.preferred = -1;
     memcpy(theme, default_theme, sizeof theme);
-    test_escape_policy(); test_cancel_dialogs(); test_open_selected_file();
+    test_escape_policy(); test_cancel_dialogs(); test_open_selected_file(); test_untitled_open();
     endwin(); delscreen(screen); fclose(input); fclose(output);
     for (int i = 0; i < MAX_DOCS; ++i) document_free(i);
     puts("Dialog tests: OK"); return 0;

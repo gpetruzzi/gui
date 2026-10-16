@@ -69,6 +69,17 @@ static bool workspace_quit(void) {
     }
     return true;
 }
+static void discard_empty_untitled(void) {
+    for (int i = 0; i < MAX_DOCS; ++i) {
+        Editor *d = &documents[i];
+        if (i == active_document || !d->s || d->path || d->n ||
+            wcscmp(d->s, d->saved) || d->un || d->rn) continue;
+        /* A split pane may still refer to the placeholder being removed. */
+        for (int p = 0; p < 2; ++p)
+            if (panes[p].doc == i) panes[p] = (Pane){.doc = active_document};
+        document_free(i);
+    }
+}
 static void workspace_open(const char *path, const OpenOptions *options) {
     struct stat candidate;
     bool exists = stat(path, &candidate) == 0;
@@ -77,13 +88,17 @@ static void workspace_open(const char *path, const OpenOptions *options) {
         bool same = exists && stat(documents[i].path, &current) == 0 &&
                     candidate.st_dev == current.st_dev && candidate.st_ino == current.st_ino;
         if (same && documents[i].binary_view == options->binary &&
-            documents[i].read_only == (options->read_only || options->binary)) { document_select(i); return; }
+            documents[i].read_only == (options->read_only || options->binary)) {
+            document_select(i); discard_empty_untitled(); return;
+        }
     }
     int old = active_document;
     bool reuse = !e.path && e.n == 0 && !dirty();
     if (!reuse && document_new() < 0) return;
     int opened = active_document;
-    if (!load_mode(path, options) && !reuse) {
+    if (load_mode(path, options)) {
+        discard_empty_untitled();
+    } else if (!reuse) {
         char error[256]; snprintf(error, sizeof error, "%s", e.message);
         document_select(old); document_free(opened); message(error);
     }
