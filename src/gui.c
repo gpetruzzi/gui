@@ -32,7 +32,7 @@
 #define K_PASTEBEGIN (KEY_MAX + 9)
 #define K_PASTEEND (KEY_MAX + 10)
 
-enum { EDIT = 1, BAR, SELECT, DIALOG, BUTTON, SHADOW, STATUS, FRAME, TITLE, MENU_ACTIVE, DISABLED };
+enum { EDIT = 1, BAR, SELECT, DIALOG, BUTTON, SHADOW, STATUS, FRAME, TITLE, TITLE_RULE, MENU_ACTIVE, DISABLED };
 #define EDIT_TOP 2
 #define EDIT_LEFT 1
 static const char *menu_names[] = {"File", "Edit", "Search", "View", "Options", "Help"};
@@ -266,7 +266,7 @@ static void draw(bool present) {
         wide_at(LINES - 2, 0, L'└'); wide_at(LINES - 2, COLS - 1, L'┘');
     }
     if (title_changed) {
-        attrset(COLOR_PAIR(SHADOW)); mvhline(1, 1, ' ', width);
+        attrset(COLOR_PAIR(TITLE_RULE)); mvhline(1, 1, ACS_HLINE, width);
         char title[1024];
         snprintf(title, sizeof title, " %s%s%s ", e.path ? e.path : "UNTITLED1", dirty() ? " *" : "",
                  e.binary_view ? " [Binary / Read-only]" : e.read_only ? " [Read-only]" : "");
@@ -930,6 +930,7 @@ int main(int argc, char **argv) {
     init_pair(SELECT, blue, gray); init_pair(DIALOG, COLOR_BLACK, gray);
     init_pair(BUTTON, COLOR_BLACK, white); init_pair(SHADOW, COLOR_BLACK, COLOR_BLACK);
     init_pair(STATUS, COLOR_BLACK, gray); init_pair(FRAME, gray, blue); init_pair(TITLE, COLOR_BLACK, white);
+    init_pair(TITLE_RULE, COLOR_BLACK, blue);
     init_pair(MENU_ACTIVE, white, COLOR_BLACK); init_pair(DISABLED, dark_gray, gray);
     define_key("\033[1;2A", K_SUP); define_key("\033[1;2B", K_SDOWN);
     define_key("\033[1;2D", KEY_SLEFT); define_key("\033[1;2C", KEY_SRIGHT);
