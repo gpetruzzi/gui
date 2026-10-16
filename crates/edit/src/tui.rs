@@ -884,6 +884,20 @@ impl Tui {
             return;
         }
 
+        if node.attributes.drop_shadow {
+            let shadow = Rect {
+                left: node.outer.left + 1,
+                top: node.outer.top + 1,
+                right: node.outer.right + 1,
+                bottom: node.outer.bottom + 1,
+            }
+            .intersect(Rect { left: 0, top: 0, right: self.size.width, bottom: self.size.height });
+            let black = StraightRgba::from_rgba(0x000000ff);
+            self.framebuffer.replace_attr(shadow, Attributes::All, Attributes::None);
+            self.framebuffer.blend_bg(shadow, black);
+            self.framebuffer.blend_fg(shadow, black);
+        }
+
         if node.attributes.bordered {
             // ┌────┐
             {
@@ -968,7 +982,7 @@ impl Tui {
 
             self.framebuffer.replace_attr(outer_clipped, Attributes::All, Attributes::None);
 
-            if matches!(node.content, NodeContent::Modal(_)) {
+            if matches!(node.content, NodeContent::Modal(_)) && !node.attributes.classic_modal {
                 let rect =
                     Rect { left: 0, top: 0, right: self.size.width, bottom: self.size.height };
                 let dim = self.indexed_alpha(IndexedColor::Background, 1, 2);
@@ -992,9 +1006,25 @@ impl Tui {
 
         match &mut node.content {
             NodeContent::Modal(title) if !title.is_empty() => {
+                let title_left = if node.attributes.classic_modal {
+                    let header = Rect {
+                        left: outer_clipped.left,
+                        top: outer_clipped.top,
+                        right: outer_clipped.right,
+                        bottom: (node.outer.top + 1).min(outer_clipped.bottom),
+                    };
+                    self.framebuffer.blend_bg(header, StraightRgba::from_rgba(0xffffffff));
+                    self.framebuffer.blend_fg(header, StraightRgba::from_rgba(0x000000ff));
+                    let title_width = unicode::MeasurementConfig::new(title.as_bytes())
+                        .goto_visual(Point { x: CoordType::MAX, y: 0 })
+                        .visual_pos.x;
+                    node.outer.left + ((node.outer.width() - title_width) / 2).max(0)
+                } else {
+                    node.outer.left + 2
+                };
                 self.framebuffer.replace_text(
                     node.outer.top,
-                    node.outer.left + 2,
+                    title_left,
                     node.outer.right - 1,
                     title,
                 );
@@ -1808,6 +1838,19 @@ impl<'a> Context<'a, '_> {
         self.last_modal = Some(self.tree.last_node);
     }
 
+    /// A DOS-style modal with a light title strip, gray body and black shadow.
+    /// Close it with [`Context::modal_end()`].
+    pub fn classic_modal_begin(&mut self, classname: &'static str, title: &str) {
+        self.modal_begin(classname, title);
+        self.attr_background_rgba(StraightRgba::from_rgba(0xaaaaaaff));
+        self.attr_foreground_rgba(StraightRgba::from_rgba(0x000000ff));
+        self.attr_padding(Rect { left: 0, top: 1, right: 0, bottom: 0 });
+        let mut node = self.tree.last_node.borrow_mut();
+        node.attributes.bordered = false;
+        node.attributes.classic_modal = true;
+        node.attributes.drop_shadow = true;
+    }
+
     /// Ends the current modal window block.
     /// Returns true if the user pressed Escape (a request to close).
     pub fn modal_end(&mut self) -> bool {
@@ -2090,6 +2133,33 @@ impl<'a> Context<'a, '_> {
         self.styled_label_add_text("]");
         self.styled_label_end();
 
+        let activated = self.button_activated();
+        if activated {
+            *checked = !*checked;
+        }
+        activated
+    }
+
+    /// A light rectangular button with a one-cell black shadow.
+    pub fn classic_button(&mut self, classname: &'static str, text: &str) -> bool {
+        let label = arena_format!(self.arena(), " {} ", text);
+        let activated = self.button(classname, &label, ButtonStyle::default().bracketed(false));
+        self.attr_background_rgba(StraightRgba::from_rgba(0xffffffff));
+        self.attr_foreground_rgba(StraightRgba::from_rgba(0x000000ff));
+        self.tree.last_node.borrow_mut().attributes.drop_shadow = true;
+        activated
+    }
+
+    /// Classic `[ ]` / `[X]` controls, with the label outside the box.
+    pub fn classic_checkbox(&mut self, classname: &'static str, text: &str, checked: &mut bool) -> bool {
+        self.styled_label_begin(classname);
+        self.attr_focusable();
+        if self.is_focused() {
+            self.attr_reverse();
+        }
+        self.styled_label_add_text(if *checked { "[X] " } else { "[ ] " });
+        self.styled_label_add_text(text);
+        self.styled_label_end();
         let activated = self.button_activated();
         if activated {
             *checked = !*checked;
@@ -3736,6 +3806,8 @@ struct NodeAttributes {
     fg: StraightRgba,
     reverse: bool,
     bordered: bool,
+    classic_modal: bool,
+    drop_shadow: bool,
     focusable: bool,
     focus_well: bool, // Prevents focus from leaving via Tab
     focus_void: bool, // Prevents focus from entering via Tab
@@ -4117,3 +4189,4 @@ impl<'a> Node<'a> {
         }
     }
 }
+

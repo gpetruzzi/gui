@@ -11,17 +11,7 @@ use crate::localization::*;
 use crate::state::*;
 
 pub fn draw_editor(ctx: &mut Context, state: &mut State) {
-    if !matches!(state.wants_search.kind, StateSearchKind::Hidden | StateSearchKind::Disabled) {
-        draw_search(ctx, state);
-    }
-
     let size = ctx.size();
-    // TODO: The layout code should be able to just figure out the height on its own.
-    let height_reduction = match state.wants_search.kind {
-        StateSearchKind::Search => 4,
-        StateSearchKind::Replace => 5,
-        _ => 2,
-    };
 
     if let Some(doc) = state.documents.active() {
         ctx.textarea("textarea", doc.buffer.clone());
@@ -31,7 +21,11 @@ pub fn draw_editor(ctx: &mut Context, state: &mut State) {
         ctx.block_end();
     }
 
-    ctx.attr_intrinsic_size(Size { width: 0, height: size.height - height_reduction });
+    ctx.attr_intrinsic_size(Size { width: 0, height: (size.height - 2).max(0) });
+
+    if !matches!(state.wants_search.kind, StateSearchKind::Hidden | StateSearchKind::Disabled) {
+        draw_search(ctx, state);
+    }
 }
 
 fn draw_search(ctx: &mut Context, state: &mut State) {
@@ -46,7 +40,9 @@ fn draw_search(ctx: &mut Context, state: &mut State) {
         return;
     };
 
+    let replacing = state.wants_search.kind == StateSearchKind::Replace;
     let mut action = None;
+    let mut cancelled = false;
     let mut focus = StateSearchKind::Hidden;
 
     if state.wants_search.focus {
@@ -61,15 +57,18 @@ fn draw_search(ctx: &mut Context, state: &mut State) {
         }
     }
 
-    ctx.block_begin("search");
-    ctx.attr_focus_well();
-    ctx.attr_background_rgba(ctx.indexed(IndexedColor::White));
-    ctx.attr_foreground_rgba(ctx.indexed(IndexedColor::Black));
+    let width = (ctx.size().width - 4).clamp(1, 64);
+    let field_width = (width - 22).clamp(1, 40);
+    ctx.classic_modal_begin(
+        "search",
+        if replacing { loc(LocId::EditReplace) } else { loc(LocId::EditFind) },
+    );
+    ctx.block_begin("content");
+    ctx.attr_padding(Rect::three(1, 2, 1));
     {
-        if ctx.contains_focus() && ctx.consume_shortcut(vk::ESCAPE) {
-            state.wants_search.kind = StateSearchKind::Hidden;
+        if ctx.contains_focus() && ctx.consume_shortcut(vk::F3) {
+            action = Some(SearchAction::Search);
         }
-
         ctx.table_begin("needle");
         ctx.table_set_cell_gap(Size { width: 1, height: 0 });
         {
@@ -78,18 +77,24 @@ fn draw_search(ctx: &mut Context, state: &mut State) {
                 ctx.label("label", loc(LocId::SearchNeedleLabel));
 
                 if ctx.editline("needle", &mut state.search_needle) {
-                    action = Some(SearchAction::Search);
+                    state.search_success = true;
                 }
+                ctx.attr_background_rgba(ctx.indexed(IndexedColor::Black));
+                ctx.attr_foreground_rgba(ctx.indexed(IndexedColor::BrightWhite));
                 if !state.search_success {
                     ctx.attr_background_rgba(ctx.indexed(IndexedColor::Red));
                     ctx.attr_foreground_rgba(ctx.indexed(IndexedColor::BrightWhite));
                 }
-                ctx.attr_intrinsic_size(Size { width: COORD_TYPE_SAFE_MAX, height: 1 });
+                ctx.attr_intrinsic_size(Size { width: field_width, height: 1 });
                 if focus == StateSearchKind::Search {
                     ctx.steal_focus();
                 }
                 if ctx.is_focused() && ctx.consume_shortcut(vk::RETURN) {
-                    action = Some(SearchAction::Search);
+                    action = Some(if replacing {
+                        SearchAction::Replace
+                    } else {
+                        SearchAction::Search
+                    });
                 }
             }
 
@@ -98,7 +103,9 @@ fn draw_search(ctx: &mut Context, state: &mut State) {
                 ctx.label("label", loc(LocId::SearchReplacementLabel));
 
                 ctx.editline("replacement", &mut state.search_replacement);
-                ctx.attr_intrinsic_size(Size { width: COORD_TYPE_SAFE_MAX, height: 1 });
+                ctx.attr_background_rgba(ctx.indexed(IndexedColor::Black));
+                ctx.attr_foreground_rgba(ctx.indexed(IndexedColor::BrightWhite));
+                ctx.attr_intrinsic_size(Size { width: field_width, height: 1 });
                 if focus == StateSearchKind::Replace {
                     ctx.steal_focus();
                 }
@@ -114,48 +121,79 @@ fn draw_search(ctx: &mut Context, state: &mut State) {
         ctx.table_end();
 
         ctx.table_begin("options");
-        ctx.table_set_cell_gap(Size { width: 2, height: 0 });
+        ctx.attr_padding(Rect::three(1, 0, 1));
         {
-            let mut change = false;
-            let mut change_action = Some(SearchAction::Search);
-
             ctx.table_next_row();
-
-            change |= ctx.checkbox(
-                "match-case",
-                loc(LocId::SearchMatchCase),
-                &mut state.search_options.match_case,
-            );
-            change |= ctx.checkbox(
+            ctx.classic_checkbox(
                 "whole-word",
                 loc(LocId::SearchWholeWord),
                 &mut state.search_options.whole_word,
             );
-            change |= ctx.checkbox(
+            ctx.table_next_row();
+            ctx.classic_checkbox(
+                "match-case",
+                loc(LocId::SearchMatchCase),
+                &mut state.search_options.match_case,
+            );
+            ctx.table_next_row();
+            ctx.classic_checkbox(
                 "use-regex",
                 loc(LocId::SearchUseRegex),
                 &mut state.search_options.use_regex,
             );
-            if state.wants_search.kind == StateSearchKind::Replace
-                && ctx.button("replace-all", loc(LocId::SearchReplaceAll), ButtonStyle::default())
-            {
-                change = true;
-                change_action = Some(SearchAction::ReplaceAll);
-            }
-            if ctx.button("close", loc(LocId::SearchClose), ButtonStyle::default()) {
-                state.wants_search.kind = StateSearchKind::Hidden;
-            }
+        }
+        ctx.table_end();
 
-            if change {
-                action = change_action;
+        if !state.search_success {
+            ctx.label("not-found", "No se encontraron coincidencias.");
+        }
+
+        ctx.table_begin("choices");
+        ctx.attr_position(Position::Center);
+        ctx.table_set_cell_gap(Size { width: 3, height: 0 });
+        ctx.table_next_row();
+        {
+            if ctx.classic_button(
+                "ok",
+                if replacing { loc(LocId::EditReplace) } else { loc(LocId::Ok) },
+            ) {
+                action = Some(if replacing {
+                    SearchAction::Replace
+                } else {
+                    SearchAction::Search
+                });
+            }
+            if replacing && ctx.classic_button("replace-all", loc(LocId::SearchReplaceAll)) {
+                action = Some(SearchAction::ReplaceAll);
+            }
+            if ctx.classic_button("cancel", loc(LocId::Cancel)) {
+                cancelled = true;
+            }
+            if ctx.classic_button("help", loc(LocId::Help)) {
+                state.search_help = !state.search_help;
             }
         }
         ctx.table_end();
+
+        if state.search_help {
+            ctx.label("help-tab", "Tab / Shift+Tab: cambiar de campo.");
+            ctx.attr_padding(Rect::three(1, 0, 0));
+            ctx.label("help-keys", "Enter: aceptar. Esc: cancelar. F3: siguiente.");
+        }
     }
     ctx.block_end();
+    cancelled |= ctx.modal_end();
 
-    if let Some(action) = action {
+    if cancelled {
+        state.wants_search.kind = StateSearchKind::Hidden;
+        state.search_help = false;
+        ctx.needs_rerender();
+    } else if let Some(action) = action {
         search_execute(ctx, state, action);
+        if state.search_success {
+            state.wants_search.kind = StateSearchKind::Hidden;
+            state.search_help = false;
+        }
     }
 }
 
@@ -353,3 +391,4 @@ fn validate_goto_point(line: &str) -> Option<Point> {
     }
     Some(Point { x: coords[0], y: coords[1] })
 }
+
