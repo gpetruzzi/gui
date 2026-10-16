@@ -3,8 +3,9 @@
 Maintainer: **Guillermo Petruzzi <gpetruzzi@gmail.com>**.
 
 These files prepare a local Debian package of gui 1.0. They do not mean
-that Debian has accepted gui. The initial version is `1.0-1~local1`, with
-distribution `UNRELEASED`, while build and review results are collected.
+that Debian has accepted gui. The current candidate is `1.0-1~local2`, targeting `unstable` for clean-environment
+review. This target only records the intended distribution; it does not upload
+the package or imply archive acceptance.
 
 ## Install build tools on Debian 13
 
@@ -42,7 +43,7 @@ On success, artifacts are copied to `dist/debian/`.
 On Debian amd64, expect a main package named:
 
 ```text
-dist/debian/gui_1.0-1~local1_amd64.deb
+dist/debian/gui_1.0-1~local2_amd64.deb
 ```
 
 The architecture suffix differs on other machines. Debug packages, build
@@ -50,9 +51,9 @@ metadata and the upstream source archive may also be produced. Review package
 contents and the corresponding changes file before installing:
 
 ```sh
-dpkg-deb --info dist/debian/gui_1.0-1~local1_amd64.deb
-dpkg-deb --contents dist/debian/gui_1.0-1~local1_amd64.deb
-lintian --pedantic dist/debian/gui_1.0-1~local1_amd64.changes
+dpkg-deb --info dist/debian/gui_1.0-1~local2_amd64.deb
+dpkg-deb --contents dist/debian/gui_1.0-1~local2_amd64.deb
+lintian --pedantic dist/debian/gui_1.0-1~local2_amd64.changes
 ```
 
 Review Lintian output rather than assuming that a completed build is sufficient
@@ -64,7 +65,7 @@ results are claimed by the packaging files themselves.
 Run the installation as root:
 
 ```sh
-apt install ./dist/debian/gui_1.0-1~local1_amd64.deb
+apt install ./dist/debian/gui_1.0-1~local2_amd64.deb
 ```
 
 Then test the packaged executable and manual:
@@ -123,7 +124,7 @@ logs, including failures, for the review.
    package, or find a Debian maintainer willing to do so. Do not invent an ITP
    number in the changelog.
 5. Replace the local candidate version with the reviewed Debian revision,
-   typically `1.0-1`, target the appropriate distribution, and add the real
+   typically `1.0-1`, confirm the target distribution, and add the real
    ITP closure when available. Rebuild and sign with the maintainer's key.
 6. Publish the source candidate on mentors.debian.net and request sponsorship.
    Address reviewer feedback; acceptance into Debian's NEW queue is separate.

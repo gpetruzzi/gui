@@ -1,3 +1,10 @@
+gui (1.0-1~local2) unstable; urgency=medium
+
+  * Target unstable for clean-environment review and avoid the
+    unreleased-changes Lintian error in generated changes files.
+
+ -- Guillermo Petruzzi <gpetruzzi@gmail.com>  Fri, 16 Oct 2026 15:05:00 -0300
+
 gui (1.0-1~local1) UNRELEASED; urgency=medium
 
   * Prepare initial Debian packaging for local build and review.

@@ -2,7 +2,8 @@ gui for Debian
 ==============
 
 This is a local packaging candidate, not an official Debian archive package.
-Version 1.0-1~local1 is deliberately marked UNRELEASED while it is tested.
+Version 1.0-1~local2 targets unstable for clean-environment review.
+That target does not publish the package or imply archive acceptance.
 No ITP number or archive acceptance is implied by these files.
 
 The package installs /usr/bin/gui and /usr/share/man/man1/gui.1.gz.
