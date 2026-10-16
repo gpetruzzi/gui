@@ -884,6 +884,38 @@ impl Tui {
             return;
         }
 
+        if node.attributes.half_shadow {
+            // DOS buttons cast a half-cell shadow, not a full extra text row.
+            // Keep the parent's background visible behind the half-block glyphs.
+            let screen = Rect { left: 0, top: 0, right: self.size.width, bottom: self.size.height };
+            let black = StraightRgba::from_rgba(0x000000ff);
+            for (rect, glyph) in [
+                (Rect {
+                    left: node.outer.left + 1,
+                    top: node.outer.bottom,
+                    right: node.outer.right + 1,
+                    bottom: node.outer.bottom + 1,
+                }, '▀'),
+                (Rect {
+                    left: node.outer.right,
+                    top: node.outer.top,
+                    right: node.outer.right + 1,
+                    bottom: node.outer.top + 1,
+                }, '▄'),
+            ] {
+                let rect = rect.intersect(screen);
+                if rect.is_empty() {
+                    continue;
+                }
+                let scratch = scratch_arena(None);
+                let mut shadow = BString::empty();
+                shadow.push_repeat(&*scratch, glyph, rect.width() as usize);
+                self.framebuffer.replace_attr(rect, Attributes::All, Attributes::None);
+                self.framebuffer.blend_fg(rect, black);
+                self.framebuffer.replace_text(rect.top, rect.left, rect.right, &shadow);
+            }
+        }
+
         if node.attributes.drop_shadow {
             let shadow = Rect {
                 left: node.outer.left + 1,
@@ -2162,13 +2194,13 @@ impl<'a> Context<'a, '_> {
         activated
     }
 
-    /// A light rectangular button with a one-cell black shadow.
+    /// A light rectangular button with a half-cell black shadow.
     pub fn classic_button(&mut self, classname: &'static str, text: &str) -> bool {
         let label = arena_format!(self.arena(), " {} ", text);
         let activated = self.button(classname, &label, ButtonStyle::default().bracketed(false));
         self.attr_background_rgba(StraightRgba::from_rgba(0xffffffff));
         self.attr_foreground_rgba(StraightRgba::from_rgba(0x000000ff));
-        self.tree.last_node.borrow_mut().attributes.drop_shadow = true;
+        self.tree.last_node.borrow_mut().attributes.half_shadow = true;
         activated
     }
 
@@ -3841,6 +3873,7 @@ struct NodeAttributes {
     classic_modal: bool,
     classic_input: bool,
     drop_shadow: bool,
+    half_shadow: bool,
     focusable: bool,
     focus_well: bool, // Prevents focus from leaving via Tab
     focus_void: bool, // Prevents focus from entering via Tab
