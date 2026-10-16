@@ -57,8 +57,7 @@ fn draw_search(ctx: &mut Context, state: &mut State) {
         }
     }
 
-    let width = (ctx.size().width - 4).clamp(1, 64);
-    let field_width = (width - 22).clamp(1, 40);
+    let field_width = (ctx.size().width - 26).clamp(1, 26);
     ctx.classic_modal_begin(
         "search",
         if replacing { loc(LocId::EditReplace) } else { loc(LocId::EditFind) },
@@ -76,11 +75,9 @@ fn draw_search(ctx: &mut Context, state: &mut State) {
                 ctx.table_next_row();
                 ctx.label("label", loc(LocId::SearchNeedleLabel));
 
-                if ctx.editline("needle", &mut state.search_needle) {
+                if ctx.classic_editline("needle", &mut state.search_needle) {
                     state.search_success = true;
                 }
-                ctx.attr_background_rgba(ctx.indexed(IndexedColor::Black));
-                ctx.attr_foreground_rgba(ctx.indexed(IndexedColor::BrightWhite));
                 if !state.search_success {
                     ctx.attr_background_rgba(ctx.indexed(IndexedColor::Red));
                     ctx.attr_foreground_rgba(ctx.indexed(IndexedColor::BrightWhite));
@@ -102,9 +99,7 @@ fn draw_search(ctx: &mut Context, state: &mut State) {
                 ctx.table_next_row();
                 ctx.label("label", loc(LocId::SearchReplacementLabel));
 
-                ctx.editline("replacement", &mut state.search_replacement);
-                ctx.attr_background_rgba(ctx.indexed(IndexedColor::Black));
-                ctx.attr_foreground_rgba(ctx.indexed(IndexedColor::BrightWhite));
+                ctx.classic_editline("replacement", &mut state.search_replacement);
                 ctx.attr_intrinsic_size(Size { width: field_width, height: 1 });
                 if focus == StateSearchKind::Replace {
                     ctx.steal_focus();
@@ -126,20 +121,14 @@ fn draw_search(ctx: &mut Context, state: &mut State) {
             ctx.table_next_row();
             ctx.classic_checkbox(
                 "whole-word",
-                loc(LocId::SearchWholeWord),
+                "Solo palabras completas",
                 &mut state.search_options.whole_word,
             );
             ctx.table_next_row();
             ctx.classic_checkbox(
                 "match-case",
-                loc(LocId::SearchMatchCase),
+                "Distinguir mayúsculas/minúsculas",
                 &mut state.search_options.match_case,
-            );
-            ctx.table_next_row();
-            ctx.classic_checkbox(
-                "use-regex",
-                loc(LocId::SearchUseRegex),
-                &mut state.search_options.use_regex,
             );
         }
         ctx.table_end();
@@ -148,23 +137,27 @@ fn draw_search(ctx: &mut Context, state: &mut State) {
             ctx.label("not-found", "No se encontraron coincidencias.");
         }
 
+        if replacing {
+            ctx.table_begin("replace-all-row");
+            ctx.attr_padding(Rect::three(0, 0, 1));
+            ctx.table_next_row();
+            if ctx.classic_button("replace-all", loc(LocId::SearchReplaceAll)) {
+                action = Some(SearchAction::ReplaceAll);
+            }
+            ctx.table_end();
+        }
+
         ctx.table_begin("choices");
         ctx.attr_position(Position::Center);
         ctx.table_set_cell_gap(Size { width: 3, height: 0 });
         ctx.table_next_row();
         {
-            if ctx.classic_button(
-                "ok",
-                if replacing { loc(LocId::EditReplace) } else { loc(LocId::Ok) },
-            ) {
+            if ctx.classic_button("ok", "  OK  ") {
                 action = Some(if replacing {
                     SearchAction::Replace
                 } else {
                     SearchAction::Search
                 });
-            }
-            if replacing && ctx.classic_button("replace-all", loc(LocId::SearchReplaceAll)) {
-                action = Some(SearchAction::ReplaceAll);
             }
             if ctx.classic_button("cancel", loc(LocId::Cancel)) {
                 cancelled = true;

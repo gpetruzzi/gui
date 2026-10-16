@@ -1054,6 +1054,28 @@ impl Tui {
                     tb.render(tc.scroll_offset, destination, tc.has_focus, &mut self.framebuffer)
                 {
                     tc.scroll_offset_x_max = res.visual_pos_x_max;
+                    if node.attributes.classic_input {
+                        let start = (inner.left + res.visual_pos_x_max - tc.scroll_offset.x)
+                            .max(inner_clipped.left)
+                            .min(inner_clipped.right);
+                        let scratch = scratch_arena(None);
+                        let mut dots = BString::empty();
+                        dots.push_repeat(&*scratch, '.', (inner_clipped.right - start) as usize);
+                        self.framebuffer.replace_text(inner_clipped.top, start, inner_clipped.right, &dots);
+                    }
+                }
+
+                if node.attributes.classic_input {
+                    if node.outer.left >= outer_clipped.left {
+                        self.framebuffer.replace_text(
+                            outer_clipped.top, node.outer.left, outer_clipped.right, "[",
+                        );
+                    }
+                    if node.outer.right <= outer_clipped.right {
+                        self.framebuffer.replace_text(
+                            outer_clipped.top, node.outer.right - 1, outer_clipped.right, "]",
+                        );
+                    }
                 }
 
                 if !tc.single_line {
@@ -2185,6 +2207,16 @@ impl<'a> Context<'a, '_> {
     /// Returns true if the text contents changed.
     pub fn editline(&mut self, classname: &'static str, text: &mut dyn WriteableDocument) -> bool {
         self.textarea_internal(classname, TextBufferPayload::Editline(text))
+    }
+
+    /// Gray DOS-style field with brackets and dotted space after the text.
+    pub fn classic_editline(&mut self, classname: &'static str, text: &mut dyn WriteableDocument) -> bool {
+        let changed = self.editline(classname, text);
+        self.attr_padding(Rect::two(0, 1));
+        self.attr_background_rgba(StraightRgba::from_rgba(0xaaaaaaff));
+        self.attr_foreground_rgba(StraightRgba::from_rgba(0x000000ff));
+        self.tree.last_node.borrow_mut().attributes.classic_input = true;
+        changed
     }
 
     /// Creates a text area.
@@ -3807,6 +3839,7 @@ struct NodeAttributes {
     reverse: bool,
     bordered: bool,
     classic_modal: bool,
+    classic_input: bool,
     drop_shadow: bool,
     focusable: bool,
     focus_well: bool, // Prevents focus from leaving via Tab
