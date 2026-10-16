@@ -1,9 +1,8 @@
-# gui — C edition
+# gui 1.0
 
-An independent Linux terminal editor written from scratch in C11 with ncursesw.
-The `main` branch contains independent C code, not a translation of Microsoft Edit's Rust implementation.
+A Linux terminal text editor by **Guillermo Petruzzi**, with a classic DOS-style interface, keyboard shortcuts and mouse support.
 
-**Development prototype. The latest interface changes have not been compiled or visually verified by the assistant.** Try this branch separately before replacing an installed editor.
+Open up to nine documents, work in two editing panels, search and replace text, and customize the interface colors. gui has an English interface and is developed on the `main` branch.
 
 ## Classic appearance
 
@@ -17,13 +16,13 @@ The `main` branch contains independent C code, not a translation of Microsoft Ed
 - Open and Save As use a classic two-pane browser: File Name, current path, Existing Files and Directories, with OK, Cancel and Help buttons. Use Tab to move between controls, arrows to select an entry and Enter to enter a directory. Saving to another existing file asks before replacing it.
 - Open has a taller Files pane and a shorter Directories pane, followed by Open Read-only, Open Binary and Line Width. Read-only blocks edits and saving. Open Binary opens a **read-only hexadecimal view**, not a binary editor; Line Width is the number of source bytes per row (1–256, default 70). It is disabled for ordinary text files.
 
-The terminal font controls the exact appearance of characters and shadows. All dialogs share a full-width, one-row white title strip, white buttons with black text, inward ASCII arrow focus markers (`> OK <`) and a short half-cell black shadow offset down and right. The renderer uses a neutral curses background so blank controls keep their own colors. On 256-color terminals, fixed palette slots provide black (#000000), white (#ffffff) and a darker gray (#a8a8a8). Button text uses no bold or reverse video. A UTF-8 font containing half-block glyphs is required for those details. No terminal palette entries are reprogrammed.
+The terminal font controls the exact appearance of characters and shadows. All dialogs share a full-width, one-row white title strip, white buttons with black text, inward ASCII arrow focus markers (`> OK <`) and a short half-cell black shadow offset down and right. On 256-color terminals, fixed palette slots provide black (#000000), white (#ffffff) and a darker gray (#a8a8a8). Button text uses no bold or reverse video. A UTF-8 font containing half-block glyphs is required for those details. No terminal palette entries are reprogrammed.
 
 gui respects the connection's TERM and never substitutes a different terminfo profile. Borders, arrows and scrollbar stipple are written as Unicode characters through ncursesw, avoiding VT100 alternate-character-set sequences that can appear as q/x letters in UTF-8 terminal sessions. Real eight-color terminals cannot display separate light gray and bright white backgrounds. Configure KiTTY's actual terminal capabilities before advertising a 256-color profile.
 
 The editor status bar shows the current one-based Line and Col at the right; columns account for tabs and wide characters. About gui stays open until Enter, Esc, Alt+O or a click on OK; unrelated mouse events do not dismiss it.
 
-Ordinary cursor movement does not erase or rebuild the screen. The editor tracks text revisions, selection, scrolling and terminal size; only changes to those require repainting the document. Status messages update the footer independently. Dialogs and menus are composed before refreshing the terminal, avoiding an intermediate display of the uncovered background.
+Use the arrow keys to navigate menus. Disabled commands can be highlighted but cannot be executed. In file browsers and the Colors dialog, selected list entries use white text on a black background.
 
 ## Keys
 
@@ -63,7 +62,7 @@ Options contains Settings and Colors. Settings changes Tab Stops from 1 to 32 co
 
 Preferences are saved when accepted to `$XDG_CONFIG_HOME/gui/settings`, or `~/.config/gui/settings` when XDG_CONFIG_HOME is unset. If writing fails they still apply to the current session and the status bar reports the error. Corrupt preferences fall back to defaults.
 
-The clipboard is internal in this prototype. To paste from another application, use your terminal's paste command (usually Ctrl+Shift+V). Bracketed terminal paste is supported in the document. Some terminals intercept Ctrl+Insert or Shift+Insert.
+The clipboard is internal to gui and shared between its open documents. To paste from another application, use your terminal's paste command (usually Ctrl+Shift+V). Bracketed terminal paste is supported in the document. Some terminals intercept Ctrl+Insert or Shift+Insert.
 
 To copy with the mouse, hold the left button and drag, release it, press Ctrl+C or choose Edit → Copy, then use Ctrl+V inside gui. The status bar reports the number of characters copied to gui's internal clipboard. Copying without a selection reports "No text selected." Drag handling preserves its anchor across repeated held-button events and ends on release, including outside the document.
 
@@ -71,7 +70,11 @@ Use Tab and Shift+Tab to move between dialog controls, Space to toggle checkboxe
 
 Dialog Alt shortcuts: file browsers use N for File Name, F for Files, D for Directories, O for OK, C for Cancel and H for Help. Open adds R for Read-only, B for Binary and W for Line Width. Find/Replace use F for Find What, R for Replace With, W for Whole Word, M for Match Case, O for OK, A for All, C for Cancel and H for Help. Save confirmations use S for Save, D for Discard and C for Cancel.
 
-## Build separately on Debian or Ubuntu
+## Build and run
+
+gui is written in C11 and requires a compiler, Make, Git and the ncursesw development library. Run package installation commands as root, or prefix them with `sudo`.
+
+### Debian and Ubuntu
 
 ```sh
 apt update
@@ -92,12 +95,35 @@ make -B && make test
 ./gui sample.txt
 ```
 
-Fedora dependencies: `gcc make ncurses-devel git`. Rust is not required.
-After validating the prototype, `make install` installs to `/usr/local/bin` by default.
+### Fedora
+
+Install the dependencies as root, then use the same clone and build commands above:
+
+```sh
+dnf install gcc make ncurses-devel git
+```
+
+### Install or update the installed executable
+
+After building and testing, run as root:
+
+```sh
+make install
+```
+
+This installs gui in `/usr/local/bin`. Launch it with `gui` for a blank document or `gui filename.txt` to open a file. Use `./gui` when testing a fresh build in the source directory; repeat `make install` to update a previously installed copy.
+
+Check the version with `./gui --version`. For gui 1.0, About shows:
+
+```text
+gui 1.0
+Author: Guillermo Petruzzi
+License: GNU GPLv3 or later
+```
 
 ## Validation
 
-Core tests cover selection, undo/redo, search, replacement, mouse coordinate mapping, UTF-8/CRLF file I/O, file browser directory scanning, read-only protection, binary hex views, multiple documents, clipboard transfer, split view cursor independence, tab spacing and preference persistence. Updated tests have not been run by the assistant.
+Core tests cover selection, undo/redo, search, replacement, mouse coordinate mapping, UTF-8/CRLF file I/O, file browser directory scanning, read-only protection, binary hex views, multiple documents, clipboard transfer, split view cursor independence, tab spacing and preference persistence. Run them locally with `make test`; terminal appearance and input behavior also need checking in your terminal.
 
 On Linux, also check all selection shortcuts, menu activation (including Alt/F10), every dialog's appearance, split resizing and pane clicks, terminal resize, canceled exits with multiple unsaved documents, preference cancellation and failed saves. Some terminals intercept Ctrl+function keys; the corresponding View menu commands work without those key sequences. Compare the appearance against the classic editor references, particularly in KiTTY.
 
@@ -105,7 +131,11 @@ On Linux, also check all selection shortcuts, menu activation (including Alt/F10
 
 Up to nine documents, two panels and literal search without regular expressions. Text editing requires UTF-8 without NUL bytes; other files can be inspected using Open Binary, a read-only hex view. UTF-8 BOM and uniform LF/CRLF line endings are preserved. Mixed line endings are normalized to CRLF when CRLF is present. Saving over symbolic links is not supported.
 
-The document and up to 64 undo states are stored as memory copies, so this prototype is intended for small and medium text files. Editing operates on Unicode code points; complex emoji and combining sequences are not yet treated as indivisible grapheme clusters.
+The document and up to 64 undo states are stored as memory copies, so gui is intended for small and medium text files. Editing operates on Unicode code points; complex emoji and combining sequences are not yet treated as indivisible grapheme clusters.
+
+## Author
+
+**Guillermo Petruzzi**
 
 ## License
 
@@ -115,4 +145,4 @@ You may use, modify and redistribute gui, including commercially. When distribut
 
 Previously published MIT versions retain their MIT permissions. The historical MIT notice is preserved in [LICENSES/MIT-legacy.txt](LICENSES/MIT-legacy.txt). External dependencies retain their own licenses.
 
-The About dialog identifies gui's own C edition and GPL license.
+The About dialog identifies gui 1.0, its author Guillermo Petruzzi, and the GPL license.
