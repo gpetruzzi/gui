@@ -930,7 +930,7 @@ int main(int argc, char **argv) {
     init_pair(SELECT, blue, gray); init_pair(DIALOG, COLOR_BLACK, gray);
     init_pair(BUTTON, COLOR_BLACK, white); init_pair(SHADOW, COLOR_BLACK, COLOR_BLACK);
     init_pair(STATUS, COLOR_BLACK, gray); init_pair(FRAME, gray, blue); init_pair(TITLE, COLOR_BLACK, white);
-    init_pair(TITLE_RULE, COLOR_BLACK, blue);
+    init_pair(TITLE_RULE, white, blue);
     init_pair(MENU_ACTIVE, white, COLOR_BLACK); init_pair(DISABLED, dark_gray, gray);
     define_key("\033[1;2A", K_SUP); define_key("\033[1;2B", K_SDOWN);
     define_key("\033[1;2D", KEY_SLEFT); define_key("\033[1;2C", KEY_SRIGHT);
