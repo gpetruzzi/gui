@@ -833,7 +833,7 @@ restart:;
     int panel_width = which == 1 ? 20 : which == 3 ? 31 : 28;
     if (small_screen(count + 3, panel_width + 1)) return NONE;
     int selected = 0, x = menu_x[which];
-    for (int i = 0; i < count; ++i) if (action_enabled(actions[i])) { selected = i; break; }
+    for (int i = 0; i < count; ++i) if (actions[i] != NONE) { selected = i; break; }
     if (x + panel_width + 1 > COLS) x = COLS - panel_width - 1;
     for (;;) {
         draw(false); curs_set(0);
@@ -853,7 +853,8 @@ restart:;
             attrset(COLOR_PAIR(DIALOG));
             wide_at(i + 2, x, L'│'); wide_at(i + 2, x + panel_width - 1, L'│');
             bool enabled = action_enabled(actions[i]);
-            attrset(COLOR_PAIR(!enabled ? DISABLED : i == selected ? MENU_ACTIVE : DIALOG));
+            attrset(COLOR_PAIR(i == selected ? MENU_ACTIVE : enabled ? DIALOG : DISABLED));
+            if (i == selected && !enabled) attron(A_DIM);
             mvhline(i + 2, x + 1, ' ', panel_width - 2); text_at(i + 2, x + 2, labels[i], panel_width - 4);
             if (which == 3 && actions[i] == NONE) {
                 attrset(COLOR_PAIR(DIALOG)); mvhline(i + 2, x + 1, ACS_HLINE, panel_width - 2);
@@ -865,7 +866,7 @@ restart:;
             int direction = c == KEY_UP ? count - 1 : 1;
             for (int i = 0; i < count; ++i) {
                 selected = (selected + direction) % count;
-                if (action_enabled(actions[selected])) break;
+                if (actions[selected] != NONE) break;
             }
         }
         else if (t == KEY_CODE_YES && c == KEY_LEFT) { which = (which + 5) % 6; goto restart; }
@@ -875,6 +876,7 @@ restart:;
                 if (m.y == 0) { which = menu_from_x(m.x); goto restart; }
                 if (m.y >= 2 && m.y <= count + 1 && m.x > x && m.x < x + panel_width - 1) {
                     int chosen = actions[m.y - 2];
+                    if (chosen != NONE) selected = m.y - 2;
                     if (action_enabled(chosen)) return chosen;
                     continue;
                 }
