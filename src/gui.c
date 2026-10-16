@@ -89,15 +89,16 @@ static bool view_changed(const ViewState *a, const ViewState *b) {
 typedef struct { bool read_only, binary; unsigned line_width; } OpenOptions;
 static OpenOptions open_options = {false, false, 70};
 static bool screen_ready;
-static bool eight_colors;
+static SCREEN *terminal_screen;
 static attr_t control_attrs(int pair) {
-    return COLOR_PAIR(pair) | (eight_colors && (pair == BUTTON || pair == TITLE) ? A_BOLD | A_REVERSE : 0);
+    return COLOR_PAIR(pair);
 }
 
 static void cleanup(void) {
     if (!screen_ready) return;
     printf("\033[?1002l\033[?2004l"); fflush(stdout);
     endwin(); screen_ready = false;
+    if (terminal_screen) { delscreen(terminal_screen); terminal_screen = NULL; }
 }
 
 static void die(const char *msg) {
@@ -1112,26 +1113,33 @@ int main(int argc, char **argv) {
     settings_load();
     e.s = copy_text(L"", 0); e.saved = copy_text(L"", 0); e.preferred = -1;
     if (argc == 2 && !load(argv[1])) die(e.message);
-    initscr(); screen_ready = true; atexit(cleanup);
+    /* KiTTY/PuTTY may announce the eight-color "xterm" profile even though
+     * they support indexed colors. Select that capability for this process. */
+    const char *requested_term = getenv("TERM"), *profile = NULL;
+    if (requested_term && (!strcmp(requested_term, "xterm") || !strcmp(requested_term, "xterm-color") || !strcmp(requested_term, "putty")))
+        profile = "xterm-256color";
+    terminal_screen = newterm(profile, stdout, stdin);
+    if (!terminal_screen && profile) terminal_screen = newterm(NULL, stdout, stdin);
+    if (!terminal_screen) die("Cannot initialize terminal. Check TERM and installed terminfo.");
+    screen_ready = true; atexit(cleanup);
     if (!has_colors()) die("A color terminal is required.");
     raw(); noecho(); keypad(stdscr, TRUE); start_color();
     if (COLOR_PAIRS <= PREVIEW) die("The terminal does not provide enough color pairs.");
-    eight_colors = COLORS < 16;
-    short white = COLORS >= 16 ? 15 : COLOR_WHITE;
-    short blue = COLOR_BLUE, gray = COLOR_WHITE, dark_gray = COLORS >= 16 ? 8 : COLOR_BLACK;
-    /* Standard ANSI colors also work when the terminal ignores palette updates. */
-    init_pair(EDIT, white, blue); init_pair(BAR, COLOR_BLACK, gray);
-    init_pair(SELECT, blue, gray); init_pair(DIALOG, COLOR_BLACK, gray);
-    init_pair(BUTTON, COLOR_BLACK, white); init_pair(SHADOW, COLOR_BLACK, COLOR_BLACK);
-    init_pair(STATUS, COLOR_BLACK, gray); init_pair(FRAME, gray, blue); init_pair(TITLE, COLOR_BLACK, white);
+    short white = COLORS >= 256 ? 231 : COLORS >= 16 ? 15 : COLOR_WHITE;
+    short black = COLORS >= 256 ? 16 : COLOR_BLACK;
+    short blue = COLOR_BLUE, gray = COLORS >= 256 ? 248 : COLOR_WHITE, dark_gray = COLORS >= 16 ? 8 : COLOR_BLACK;
+    /* Fixed xterm palette slots separate #ffffff from #a8a8a8 without bold/reverse. */
+    init_pair(EDIT, white, blue); init_pair(BAR, black, gray);
+    init_pair(SELECT, blue, gray); init_pair(DIALOG, black, gray);
+    init_pair(BUTTON, black, white); init_pair(SHADOW, black, black);
+    init_pair(STATUS, black, gray); init_pair(FRAME, gray, blue); init_pair(TITLE, black, white);
     init_pair(TITLE_RULE, white, blue);
-    init_pair(MENU_ACTIVE, white, COLOR_BLACK); init_pair(DISABLED, dark_gray, gray);
+    init_pair(MENU_ACTIVE, white, black); init_pair(DISABLED, dark_gray, gray);
     init_pair(HOTKEY, white, gray);
-    init_pair(SCROLL_ARROW, white, COLOR_BLACK);
+    init_pair(SCROLL_ARROW, white, black);
     /* DOS-style track: white stipple on black, with a separate solid white thumb. */
-    init_pair(SCROLL_TRACK, white, COLOR_BLACK);
-    init_pair(BUTTON_EDGE, COLOR_BLACK, gray);
-    if (eight_colors) { init_pair(BUTTON, COLOR_WHITE, COLOR_BLACK); init_pair(TITLE, COLOR_WHITE, COLOR_BLACK); }
+    init_pair(SCROLL_TRACK, white, black);
+    init_pair(BUTTON_EDGE, black, gray);
     theme_apply();
     define_key("\033[1;2A", K_SUP); define_key("\033[1;2B", K_SDOWN);
     define_key("\033[1;2D", KEY_SLEFT); define_key("\033[1;2C", KEY_SRIGHT);

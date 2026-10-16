@@ -274,6 +274,15 @@ static void test_preferences_roundtrip(void) {
     if (saved_env) { assert(setenv("XDG_CONFIG_HOME", saved_env, 1) == 0); free(saved_env); }
     else assert(unsetenv("XDG_CONFIG_HOME") == 0);
 }
+static void test_dialog_palette(void) {
+    int previous_colors = COLORS;
+    COLORS = 256;
+    assert(color_number(0) == 16 && color_number(7) == 248 && color_number(15) == 231);
+    assert((control_attrs(BUTTON) & (A_BOLD | A_REVERSE)) == 0);
+    assert((control_attrs(TITLE) & (A_BOLD | A_REVERSE)) == 0);
+    COLORS = 16; assert(color_number(0) == 0 && color_number(15) == 15);
+    COLORS = previous_colors;
+}
 int main(void) {
     assert(setlocale(LC_ALL, "C.UTF-8"));
     e.s = copy_text(L"", 0); e.saved = copy_text(L"", 0); e.preferred = -1;
@@ -287,6 +296,7 @@ int main(void) {
     test_documents_and_split();
     test_workspace_open();
     test_preferences_roundtrip();
+    test_dialog_palette();
     for (int i = 0; i < MAX_DOCS; ++i) document_free(i);
     puts("Core tests: OK"); return 0;
 }

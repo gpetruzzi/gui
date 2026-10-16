@@ -122,6 +122,8 @@ static const char *color_names[THEME_COLORS] = {
 };
 static short color_number(unsigned index) {
     static const short ansi[16] = {0, 4, 2, 6, 1, 5, 3, 7, 8, 12, 10, 14, 9, 13, 11, 15};
+    static const short fixed[16] = {16, 19, 34, 37, 124, 127, 130, 248, 240, 63, 83, 87, 203, 207, 227, 231};
+    if (COLORS >= 256) return fixed[index % 16];
     return (short)(ansi[index % 16] % (COLORS >= 16 ? 16 : 8));
 }
 static void theme_pair(int pair, ThemeColor color) { init_pair((short)pair, color_number(color.fg), color_number(color.bg)); }
