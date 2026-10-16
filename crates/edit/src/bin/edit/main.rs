@@ -398,7 +398,7 @@ fn draw(tui: &mut Tui, input: Option<input::Input>, state: &mut State) {
             state.wants_exit = true;
         } else if key == kbmod::CTRL | vk::G {
             state.wants_goto = true;
-        } else if key == kbmod::CTRL | vk::F && state.wants_search.kind != StateSearchKind::Disabled
+        } else if key == kbmod::CTRL | vk::B && state.wants_search.kind != StateSearchKind::Disabled
         {
             state.wants_search.kind = StateSearchKind::Search;
             state.wants_search.focus = true;

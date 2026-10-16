@@ -106,7 +106,7 @@ fn draw_menu_edit(ctx: &mut Context, state: &mut State) {
         ctx.needs_rerender();
     }
     if state.wants_search.kind != StateSearchKind::Disabled {
-        if ctx.menubar_menu_button(loc(LocId::EditFind), 'F', kbmod::CTRL | vk::F) {
+        if ctx.menubar_menu_button(loc(LocId::EditFind), 'B', kbmod::CTRL | vk::B) {
             state.wants_search.kind = StateSearchKind::Search;
             state.wants_search.focus = true;
         }
