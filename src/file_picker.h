@@ -80,7 +80,7 @@ static void list_draw(Box b, int top_row, int x, int width, int rows, FileList *
         if (i < list->n) text_at(top + row + 1, left + 1, list->names[i], width - 4);
         attrset(COLOR_PAIR(SCROLL_TRACK)); mvaddch(top + row + 1, left + width - 2, ACS_CKBOARD);
     }
-    attrset(COLOR_PAIR(SCROLL_ARROW));
+    attrset(COLOR_PAIR(SCROLL_ARROW) | A_BOLD);
     wide_at(top + 1, left + width - 2, L'↑');
     wide_at(top + rows, left + width - 2, L'↓');
     if (rows > 2) {
@@ -91,7 +91,7 @@ static void list_draw(Box b, int top_row, int x, int width, int rows, FileList *
             thumb_top = (int)((double)*scroll / (double)(list->n - (size_t)rows) * (track - thumb_size));
             if (thumb_top > track - thumb_size) thumb_top = track - thumb_size;
         }
-        attrset(COLOR_PAIR(BUTTON));
+        attrset(control_attrs(BUTTON));
         for (int i = 0; i < thumb_size; ++i) mvaddch(top + 2 + thumb_top + i, left + width - 2, ' ');
     }
 }
@@ -303,8 +303,15 @@ static bool overwrite_prompt(const char *path) {
             continue;
         }
         if (c == 27 || (t == KEY_CODE_YES && c == KEY_RESIZE)) return false;
+        if (t == KEY_CODE_YES && c == KEY_MOUSE) {
+            MEVENT m;
+            if (getmouse(&m) == OK && (m.bstate & (BUTTON1_PRESSED | BUTTON1_CLICKED)) && m.y == b.y + 5) {
+                if (m.x >= b.x + 8 && m.x < b.x + 17) return true;
+                if (m.x >= b.x + 35 && m.x < b.x + 43) return false;
+            }
+            continue;
+        }
         if (c == '\t' || (t == KEY_CODE_YES && (c == KEY_LEFT || c == KEY_RIGHT || c == KEY_BTAB))) focus = !focus;
         else if (c == '\n' || c == '\r' || (t == KEY_CODE_YES && c == KEY_ENTER)) return focus == 0;
     }
 }
-

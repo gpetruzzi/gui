@@ -31,10 +31,14 @@
 #define K_CTRLRIGHT (KEY_MAX + 8)
 #define K_PASTEBEGIN (KEY_MAX + 9)
 #define K_PASTEEND (KEY_MAX + 10)
+#define K_SPLIT (KEY_MAX + 11)
+#define K_SIZE (KEY_MAX + 12)
+#define K_CLOSE (KEY_MAX + 13)
+#define MAX_DOCS 9
 
-enum { EDIT = 1, BAR, SELECT, DIALOG, BUTTON, SHADOW, STATUS, FRAME, TITLE, TITLE_RULE, MENU_ACTIVE, HOTKEY, SCROLL_ARROW, SCROLL_TRACK, DISABLED };
+enum { EDIT = 1, BAR, SELECT, DIALOG, BUTTON, SHADOW, STATUS, FRAME, TITLE, TITLE_RULE, MENU_ACTIVE, HOTKEY, SCROLL_ARROW, SCROLL_TRACK, DISABLED, BUTTON_EDGE, PREVIEW };
 #define ALT_INPUT (-2)
-#define EDIT_TOP 2
+#define EDIT_TOP (pane_top(active_pane) + 1)
 #define EDIT_LEFT 1
 static const char *menu_names[] = {"File", "Edit", "Search", "View", "Options", "Help"};
 static const int menu_x[] = {1, 7, 13, 21, 27, 36};
@@ -51,7 +55,23 @@ typedef struct {
     bool match_case, whole_word, dragging, crlf, bom, read_only, binary_view;
     char message[256];
 } Editor;
-static Editor e;
+static Editor documents[MAX_DOCS];
+static int active_document;
+#define e (documents[active_document])
+typedef struct { int doc; size_t pos, anchor, top; int left; } Pane;
+static Pane panes[2];
+static int active_pane, split_row;
+static bool split_enabled, menu_keys;
+static unsigned tab_stops = 8;
+static int pane_top(int p) { return split_enabled && p == 1 ? split_row : 1; }
+static int pane_bottom(int p) { return split_enabled && p == 0 ? split_row - 1 : LINES - 2; }
+static void layout_clamp(void) {
+    if (split_enabled && LINES < 12) { split_enabled = false; active_pane = 0; panes[0].doc = active_document; }
+    if (split_enabled) {
+        if (split_row < 5) split_row = 5;
+        if (split_row > LINES - 6) split_row = LINES - 6;
+    }
+}
 static uint64_t text_revision;
 static bool repaint_needed = true;
 typedef struct {
@@ -69,14 +89,14 @@ static bool view_changed(const ViewState *a, const ViewState *b) {
 typedef struct { bool read_only, binary; unsigned line_width; } OpenOptions;
 static OpenOptions open_options = {false, false, 70};
 static bool screen_ready;
-static short palette_saved[4][4];
-static int palette_count;
+static bool eight_colors;
+static attr_t control_attrs(int pair) {
+    return COLOR_PAIR(pair) | (eight_colors && (pair == BUTTON || pair == TITLE) ? A_BOLD | A_REVERSE : 0);
+}
 
 static void cleanup(void) {
     if (!screen_ready) return;
     printf("\033[?1002l\033[?2004l"); fflush(stdout);
-    for (int i = 0; i < palette_count; ++i)
-        init_color(palette_saved[i][0], palette_saved[i][1], palette_saved[i][2], palette_saved[i][3]);
     endwin(); screen_ready = false;
 }
 
@@ -157,6 +177,14 @@ static void splice(size_t a, size_t b, const wchar_t *s, size_t n) {
     memcpy(p + a + n, e.s + b, (e.n - b + 1) * sizeof(*p));
     free(e.s);
     e.s = p; e.n = len; e.pos = e.anchor = a + n; e.preferred = -1;
+    if (split_enabled && panes[1 - active_pane].doc == active_document) {
+        Pane *other = &panes[1 - active_pane];
+        size_t *positions[] = {&other->pos, &other->anchor, &other->top};
+        for (int i = 0; i < 3; ++i) {
+            size_t old = *positions[i];
+            *positions[i] = old <= a ? old : old >= b ? old - (b - a) + n : a + n;
+        }
+    }
     ++text_revision;
 }
 static void insert(const wchar_t *s, size_t n) {
@@ -176,7 +204,7 @@ static void copy_selection(bool cut) {
 static size_t line_start(size_t p) { while (p && e.s[p - 1] != L'\n') --p; return p; }
 static size_t line_end(size_t p) { while (p < e.n && e.s[p] != L'\n') ++p; return p; }
 static int cell_width(wchar_t c, int col) {
-    if (c == L'\t') return 4 - col % 4;
+    if (c == L'\t') return (int)tab_stops - col % (int)tab_stops;
     int w = wcwidth(c);
     return w < 0 ? 1 : w;
 }
@@ -234,110 +262,144 @@ static int menu_from_x(int x) {
     for (int i = 5; i > 0; --i) if (x >= menu_x[i]) return i;
     return 0;
 }
-static void draw(bool present) {
-    static ViewState previous;
-    static bool valid;
-    static char last_message[256];
-    static size_t last_pos = SIZE_MAX;
-    int height = LINES - 4, width = COLS - 2;
-    if (height < 1 || width < 1) {
-        valid = false; repaint_needed = true; erase(); if (present) refresh(); return;
-    }
+typedef struct {
+    ViewState view;
+    bool valid;
+    size_t pos;
+    int doc;
+} PaintCache;
+static PaintCache paint_cache[2];
+static void draw_pane(int pane, bool full, int *cursor_y, int *cursor_x) {
+    int top = pane_top(pane), bottom = pane_bottom(pane);
+    int height = bottom - top - 1, width = COLS - 2;
+    PaintCache *cache = &paint_cache[pane];
+    if (height < 1 || width < 1) return;
+    e.pos = e.pos > e.n ? e.n : e.pos;
+    e.anchor = e.anchor > e.n ? e.n : e.anchor;
     e.top = line_start(e.top > e.n ? e.n : e.top);
     size_t start = line_start(e.pos);
     if (start < e.top) e.top = start;
-    size_t p = e.top;
-    int row = 0;
+    size_t p = e.top; int row = 0;
     while (p < start && p < e.n) { p = line_end(p) + 1; ++row; }
     while (row >= height && e.top < e.n) { e.top = line_end(e.top) + 1; --row; }
     int col = column(e.pos);
     if (col < e.left) e.left = col;
     if (col >= e.left + width) e.left = col - width + 1;
     ViewState current = view_snapshot(height, width);
-    size_t a = current.selection_start, b = current.selection_end;
-    bool full = repaint_needed || !valid || previous.height != height || previous.width != width;
-    bool body = full || view_changed(&previous, &current);
-    bool title_changed = full || previous.revision != current.revision ||
-                         previous.read_only != current.read_only || previous.binary_view != current.binary_view;
-    if (full) {
-        bkgdset(COLOR_PAIR(EDIT)); erase();
-        attrset(COLOR_PAIR(BAR)); mvhline(0, 0, ' ', COLS);
-        for (int i = 0; i < 6; ++i) {
-            text_at(0, menu_x[i], menu_names[i], COLS - menu_x[i]);
-            int accelerator = menu_x[i];
-            if (accelerator < COLS) mvchgat(0, accelerator, 1, A_UNDERLINE, BAR, NULL);
-        }
+    bool changed = full || !cache->valid || cache->doc != active_document || view_changed(&cache->view, &current);
+    if (changed) {
         attrset(COLOR_PAIR(FRAME));
-        for (int x = 1; x < COLS - 1; ++x) {
-            wide_at(1, x, L'─'); wide_at(LINES - 2, x, L'─');
+        mvhline(top, 1, ACS_HLINE, width); mvhline(bottom, 1, ACS_HLINE, width);
+        mvaddch(top, 0, ACS_ULCORNER); mvaddch(top, COLS - 1, ACS_URCORNER);
+        mvaddch(bottom, 0, ACS_LLCORNER); mvaddch(bottom, COLS - 1, ACS_LRCORNER);
+        for (int y = top + 1; y < bottom; ++y) {
+            mvaddch(y, 0, ACS_VLINE); mvaddch(y, COLS - 1, ACS_VLINE);
         }
-        for (int y = EDIT_TOP; y < LINES - 2; ++y) {
-            wide_at(y, 0, L'│'); wide_at(y, COLS - 1, L'│');
-        }
-        wide_at(1, 0, L'┌'); wide_at(1, COLS - 1, L'┐');
-        wide_at(LINES - 2, 0, L'└'); wide_at(LINES - 2, COLS - 1, L'┘');
-    }
-    if (title_changed) {
-        attrset(COLOR_PAIR(TITLE_RULE)); mvhline(1, 1, ACS_HLINE, width);
-        char title[1024];
-        snprintf(title, sizeof title, " %s%s%s ", e.path ? e.path : "UNTITLED1", dirty() ? " *" : "",
+        attrset(COLOR_PAIR(TITLE_RULE)); mvhline(top, 1, ACS_HLINE, width);
+        char title[1024], name[32];
+        snprintf(name, sizeof name, "UNTITLED%d", active_document + 1);
+        snprintf(title, sizeof title, " %s%s%s ", e.path ? e.path : name, dirty() ? " *" : "",
                  e.binary_view ? " [Binary / Read-only]" : e.read_only ? " [Read-only]" : "");
-        int title_len = (int)strlen(title);
-        int title_x = title_len < width ? (COLS - title_len) / 2 : 1;
-        attrset(COLOR_PAIR(BAR));
-        text_at(1, title_x, title, width);
-    }
-    if (body) {
+        int len = (int)strlen(title);
+        attrset(COLOR_PAIR(BAR)); text_at(top, len < width ? (COLS - len) / 2 : 1, title, width);
         attrset(COLOR_PAIR(EDIT));
-        for (int y = EDIT_TOP; y < EDIT_TOP + height; ++y) mvhline(y, EDIT_LEFT, ' ', width);
+        for (int y = top + 1; y < bottom; ++y) mvhline(y, 1, ' ', width);
+        size_t a = current.selection_start, b = current.selection_end;
         p = e.top;
-        for (int y = EDIT_TOP; y < EDIT_TOP + height; ++y) {
+        for (int y = top + 1; y < bottom; ++y) {
             int x = 0;
             while (p < e.n && e.s[p] != L'\n') {
                 wchar_t c = e.s[p]; int w = cell_width(c, x);
-                bool selected = p >= a && p < b;
-                /* No current-line highlight: only an explicit selection changes color. */
-                attrset(COLOR_PAIR(selected ? SELECT : EDIT));
+                attrset(COLOR_PAIR(p >= a && p < b ? SELECT : EDIT));
                 if (c == L'\t') {
                     for (int j = 0; j < w; ++j)
-                        if (x + j >= e.left && x + j - e.left < width)
-                            mvaddch(y, EDIT_LEFT + x + j - e.left, ' ');
-                } else if (w > 0 && x >= e.left && x + w <= e.left + width) {
-                    wide_at(y, EDIT_LEFT + x - e.left, iswprint(c) ? c : L'?');
-                } else if (w == 0 && x > e.left && x <= e.left + width) {
-                    /* Combining marks attach to the preceding displayed character. */
+                        if (x + j >= e.left && x + j < e.left + width)
+                            mvaddch(y, 1 + x + j - e.left, ' ');
+                } else if (w > 0 && x >= e.left && x + w <= e.left + width)
+                    wide_at(y, 1 + x - e.left, iswprint(c) ? c : L'?');
+                else if (!w && x > e.left && x <= e.left + width) {
                     wchar_t mark[2] = {c, 0}; addnwstr(mark, 1);
                 }
                 x += w; ++p;
             }
             if (p >= e.n) break;
-            if (p >= a && p < b && x >= e.left && x - e.left < width) {
-                attrset(COLOR_PAIR(SELECT)); mvaddch(y, EDIT_LEFT + x - e.left, ' ');
+            if (p >= a && p < b && x >= e.left && x < e.left + width) {
+                attrset(COLOR_PAIR(SELECT)); mvaddch(y, 1 + x - e.left, ' ');
             }
             ++p;
         }
-    }
-    if (full || last_pos != e.pos || previous.revision != current.revision || strcmp(last_message, e.message)) {
-        char status[1024];
-        if (e.message[0]) snprintf(status, sizeof status, "%s", e.message);
-        else snprintf(status, sizeof status, "F1=Help  Enter=Execute  Esc=Cancel  Tab=Next Field");
-        footer(status);
-        size_t line = 1;
-        for (size_t i = 0; i < e.pos; ++i) if (e.s[i] == L'\n') ++line;
-        char position[80];
-        snprintf(position, sizeof position, " Line: %zu  Col: %d ", line, col + 1);
-        int length = (int)strlen(position);
-        if (length < COLS) {
-            int x = COLS - length;
-            attrset(COLOR_PAIR(STATUS));
-            if (x > 0) mvaddch(LINES - 1, x - 1, '|');
-            text_at(LINES - 1, x, position, length);
+        size_t total = 1, first_line = 0;
+        for (size_t i = 0; i < e.n; ++i) if (e.s[i] == L'\n') { ++total; if (i < e.top) ++first_line; }
+        attrset(COLOR_PAIR(SCROLL_TRACK));
+        for (int y = top + 1; y < bottom; ++y) mvaddch(y, COLS - 1, ACS_CKBOARD);
+        attrset(COLOR_PAIR(SCROLL_ARROW) | A_BOLD);
+        mvaddch(top + 1, COLS - 1, ACS_UARROW); mvaddch(bottom - 1, COLS - 1, ACS_DARROW);
+        if (height > 2) {
+            int track = height - 2, thumb = total > (size_t)height ? (int)((double)height / (double)total * track) : track;
+            if (thumb < 1) thumb = 1;
+            int at = total > (size_t)height ? (int)((double)first_line / (double)(total - (size_t)height) * (track - thumb)) : 0;
+            if (at > track - thumb) at = track - thumb;
+            attrset(control_attrs(BUTTON));
+            for (int i = 0; i < thumb; ++i) mvaddch(top + 2 + at + i, COLS - 1, ' ');
         }
     }
-    last_pos = e.pos;
-    previous = current; valid = true; repaint_needed = false;
-    snprintf(last_message, sizeof last_message, "%s", e.message);
-    attrset(COLOR_PAIR(EDIT)); move(row + EDIT_TOP, EDIT_LEFT + col - e.left);
+    cache->view = current; cache->valid = true; cache->doc = active_document; cache->pos = e.pos;
+    if (pane == active_pane) { *cursor_y = top + 1 + row; *cursor_x = 1 + col - e.left; }
+}
+static void draw(bool present) {
+    static int old_lines, old_cols, old_pane = -1;
+    static size_t old_pos = SIZE_MAX;
+    static uint64_t old_revision;
+    static char old_message[256];
+    layout_clamp();
+    if (LINES < 5 || COLS < 3) { erase(); repaint_needed = true; if (present) refresh(); return; }
+    bool full = repaint_needed || old_lines != LINES || old_cols != COLS || old_pane != active_pane;
+    if (full) {
+        /* A neutral background prevents ncurses merging the editor colors into blank controls. */
+        bkgdset(' '); erase();
+        attrset(COLOR_PAIR(BAR)); mvhline(0, 0, ' ', COLS);
+        for (int i = 0; i < 6; ++i) {
+            attrset(COLOR_PAIR(BAR)); text_at(0, menu_x[i], menu_names[i], COLS - menu_x[i]);
+            if (menu_keys) {
+                attrset(COLOR_PAIR(HOTKEY) | A_BOLD);
+                mvaddch(0, menu_x[i], (unsigned char)menu_names[i][0]);
+            }
+        }
+    }
+    int cy = EDIT_TOP, cx = 1;
+    int saved_doc = active_document;
+    size_t saved_pos = e.pos, saved_anchor = e.anchor, saved_top = e.top;
+    int saved_left = e.left;
+    if (split_enabled) {
+        int other = 1 - active_pane;
+        active_document = panes[other].doc;
+        size_t p = e.pos, a = e.anchor, t = e.top; int l = e.left;
+        e.pos = panes[other].pos; e.anchor = panes[other].anchor;
+        e.top = panes[other].top; e.left = panes[other].left;
+        draw_pane(other, full, &cy, &cx);
+        panes[other].pos = e.pos; panes[other].anchor = e.anchor;
+        panes[other].top = e.top; panes[other].left = e.left;
+        e.pos = p; e.anchor = a; e.top = t; e.left = l;
+    }
+    active_document = saved_doc;
+    e.pos = saved_pos; e.anchor = saved_anchor; e.top = saved_top; e.left = saved_left;
+    draw_pane(active_pane, full, &cy, &cx);
+    if (full || old_pos != e.pos || old_revision != text_revision || strcmp(old_message, e.message)) {
+        footer(e.message[0] ? e.message : "F1=Help  F6=Next Window  F10=Menu");
+        size_t line = 1;
+        for (size_t i = 0; i < e.pos; ++i) if (e.s[i] == L'\n') ++line;
+        char position[80]; snprintf(position, sizeof position, " Line: %zu  Col: %d ", line, column(e.pos) + 1);
+        int len = (int)strlen(position), x = COLS - len;
+        if (x > 0) {
+            attrset(COLOR_PAIR(STATUS)); mvaddch(LINES - 1, x - 1, '|');
+            text_at(LINES - 1, x, position, len);
+        }
+    }
+    old_pos = e.pos; old_revision = text_revision; old_pane = active_pane;
+    old_lines = LINES; old_cols = COLS;
+    snprintf(old_message, sizeof old_message, "%s", e.message);
+    repaint_needed = false;
+    attrset(COLOR_PAIR(EDIT)); move(cy, cx);
     if (present) { curs_set(1); refresh(); }
 }
 typedef struct { int y, x, h, w; } Box;
@@ -349,7 +411,7 @@ static Box box_open(const char *title, int height, int width) {
     for (int y = 1; y <= height; ++y) mvhline(b.y + y, b.x + 1, ' ', width);
     attrset(COLOR_PAIR(DIALOG));
     for (int y = 0; y < height; ++y) mvhline(b.y + y, b.x, ' ', width);
-    attrset(COLOR_PAIR(TITLE)); mvhline(b.y, b.x, ' ', width);
+    attrset(control_attrs(TITLE)); mvhline(b.y, b.x, ' ', width);
     text_at(b.y, b.x + (width - (int)strlen(title)) / 2, title, width - 2);
     footer("F1=Help  Enter=Execute  Esc=Cancel  Tab=Next Field");
     mvchgat(LINES - 1, 0, COLS, A_NORMAL, BAR, NULL);
@@ -357,18 +419,17 @@ static Box box_open(const char *title, int height, int width) {
 }
 static void button(Box b, int y, int x, const char *label, bool active) {
     int len = (int)strlen(label);
-    attrset(COLOR_PAIR(DIALOG));
-    /* Use the terminal line set instead of uncommon Unicode block glyphs. */
-    mvhline(b.y + y + 1, b.x + x + 1, ACS_HLINE, len + 2);
-    mvaddch(b.y + y, b.x + x + len + 2, ACS_HLINE);
-    attrset(COLOR_PAIR(BUTTON) | A_BOLD);
-    mvaddch(b.y + y, b.x + x, active ? '>' : ' ');
+    attrset(COLOR_PAIR(BUTTON_EDGE));
+    for (int i = 1; i <= len + 2; ++i) wide_at(b.y + y + 1, b.x + x + i, L'\u2580');
+    wide_at(b.y + y, b.x + x + len + 2, L'\u2584');
+    attrset(control_attrs(BUTTON));
+    wide_at(b.y + y, b.x + x, active ? L'\u25b6' : L' ');
     text_at(b.y + y, b.x + x + 1, label, len);
-    mvaddch(b.y + y, b.x + x + len + 1, active ? '<' : ' ');
+    wide_at(b.y + y, b.x + x + len + 1, active ? L'\u25c0' : L' ');
     int accelerator = 0;
     while (label[accelerator] == ' ') ++accelerator;
     if (label[accelerator]) {
-        attrset(COLOR_PAIR(BUTTON) | A_BOLD | A_UNDERLINE);
+        attrset(control_attrs(BUTTON) | A_UNDERLINE);
         mvaddch(b.y + y, b.x + x + 1 + accelerator, (unsigned char)label[accelerator]);
     }
 }
@@ -406,6 +467,15 @@ static int confirm(const char *title, const char *prompt) {
             continue;
         }
         if (t == KEY_CODE_YES && c == KEY_RESIZE) return 2;
+        if (t == KEY_CODE_YES && c == KEY_MOUSE) {
+            MEVENT m;
+            if (getmouse(&m) == OK && (m.bstate & (BUTTON1_CLICKED | BUTTON1_PRESSED)) && m.y == b.y + 4) {
+                if (m.x >= b.x + 3 && m.x < b.x + 9) return 0;
+                if (m.x >= b.x + 20 && m.x < b.x + 29) return 1;
+                if (m.x >= b.x + 39 && m.x < b.x + 47) return 2;
+            }
+            continue;
+        }
         if (c == 27) return 2;
         if (c == '\t' || (t == KEY_CODE_YES && c == KEY_RIGHT)) choice = (choice + 1) % 3;
         else if (t == KEY_CODE_YES && (c == KEY_LEFT || c == KEY_BTAB)) choice = (choice + 2) % 3;
@@ -710,10 +780,12 @@ static void about(void) {
         }
     }
 }
-enum { NONE, NEW, OPEN, SAVE, QUIT, UNDO, REDO, COPY, CUT, PASTE, FIND, REPLACE, SELECT_ALL, ABOUT, NEXT, CASE, WHOLE, SAVE_AS, CLEAR };
+#include "workspace.h"
+enum { NONE, NEW, OPEN, SAVE, QUIT, UNDO, REDO, COPY, CUT, PASTE, FIND, REPLACE, SELECT_ALL, ABOUT, NEXT, CASE, WHOLE, SAVE_AS, CLEAR, SPLIT, SIZE, CLOSE, SETTINGS, COLORS_DIALOG, DOCUMENT_FIRST = 100 };
 static bool action_enabled(int a) {
     bool selection = e.pos != e.anchor;
     if (a == NONE) return false;
+    if (a == SIZE) return split_enabled;
     if (a == COPY) return selection;
     if (a == CUT || a == CLEAR) return selection && !e.read_only;
     if (a == PASTE) return e.clip_n != 0 && !e.read_only;
@@ -733,6 +805,7 @@ static const char *search_hint(int a) {
     return "Replaces specified text.";
 }
 static int menu(int which) {
+    menu_keys = true; repaint_needed = true;
 restart:;
     const char *file[] = {"New            Ctrl+N", "Open           Ctrl+O", "Save           Ctrl+S", "Save As...", "Exit           Ctrl+Q"};
     const int fa[] = {NEW, OPEN, SAVE, SAVE_AS, QUIT};
@@ -740,15 +813,24 @@ restart:;
     const int ea[] = {CUT, COPY, PASTE, CLEAR};
     const char *search[] = {"Find...", "Repeat Last Find      F3", "Replace..."};
     const int sa[] = {FIND, NEXT, REPLACE};
-    const char *view[] = {"Line Numbers: Off", "Line Highlight: Off"};
-    const int va[] = {NONE, NONE};
-    const char *options[] = {"Match Case", "Match Whole Word Only"};
-    const int oa[] = {CASE, WHOLE};
+    char document_labels[MAX_DOCS][128];
+    const char *view[4 + MAX_DOCS] = {"Split Window     Ctrl+F6", "Size Window      Ctrl+F8", "Close Window     Ctrl+F4", ""};
+    int va[4 + MAX_DOCS] = {SPLIT, SIZE, CLOSE, NONE};
+    int view_count = 4;
+    for (int i = 0; i < MAX_DOCS; ++i) if (documents[i].s) {
+        const char *name = documents[i].path ? strrchr(documents[i].path, '/') : NULL;
+        char untitled[24]; snprintf(untitled, sizeof untitled, "UNTITLED%d", i + 1);
+        name = name ? name + 1 : documents[i].path ? documents[i].path : untitled;
+        snprintf(document_labels[i], sizeof document_labels[i], "%d %-16.16s Alt+%d", i + 1, name, i + 1);
+        view[view_count] = document_labels[i]; va[view_count++] = DOCUMENT_FIRST + i;
+    }
+    const char *options[] = {"Settings...", "Colors..."};
+    const int oa[] = {SETTINGS, COLORS_DIALOG};
     const char *help[] = {"About gui"}; const int ha[] = {ABOUT};
     const char **labels = which == 0 ? file : which == 1 ? edit : which == 2 ? search : which == 3 ? view : which == 4 ? options : help;
     const int *actions = which == 0 ? fa : which == 1 ? ea : which == 2 ? sa : which == 3 ? va : which == 4 ? oa : ha;
-    int count = which == 0 ? 5 : which == 1 ? 4 : which == 2 ? 3 : which == 5 ? 1 : 2;
-    int panel_width = which == 1 ? 20 : 28;
+    int count = which == 0 ? 5 : which == 1 ? 4 : which == 2 ? 3 : which == 3 ? view_count : which == 5 ? 1 : 2;
+    int panel_width = which == 1 ? 20 : which == 3 ? 31 : 28;
     if (small_screen(count + 3, panel_width + 1)) return NONE;
     int selected = 0, x = menu_x[which];
     for (int i = 0; i < count; ++i) if (action_enabled(actions[i])) { selected = i; break; }
@@ -773,8 +855,9 @@ restart:;
             bool enabled = action_enabled(actions[i]);
             attrset(COLOR_PAIR(!enabled ? DISABLED : i == selected ? MENU_ACTIVE : DIALOG));
             mvhline(i + 2, x + 1, ' ', panel_width - 2); text_at(i + 2, x + 2, labels[i], panel_width - 4);
-            if (which == 4 && ((i == 0 && e.match_case) || (i == 1 && e.whole_word)))
-                mvaddch(i + 2, x + 26, '*');
+            if (which == 3 && actions[i] == NONE) {
+                attrset(COLOR_PAIR(DIALOG)); mvhline(i + 2, x + 1, ACS_HLINE, panel_width - 2);
+            }
         }
         refresh(); wint_t c; int t = key(&c); if (t == ERR) continue;
         if (c == 27 || (t == KEY_CODE_YES && c == KEY_RESIZE)) return NONE;
@@ -811,11 +894,11 @@ restart:;
     }
 }
 static bool action(int a) {
-    if (a == QUIT) return !may_discard();
-    if (a == NEW && may_discard()) reset_document(copy_text(L"", 0), 0, NULL, false, false);
+    if (a == QUIT) return !workspace_quit();
+    if (a >= DOCUMENT_FIRST && a < DOCUMENT_FIRST + MAX_DOCS) { document_select(a - DOCUMENT_FIRST); return true; }
+    if (a == NEW) document_new();
     else if (a == OPEN) {
-        if (!may_discard()) return true;
-        char *path = NULL; if (path_prompt("Open", &path)) load_mode(path, &open_options); free(path);
+        char *path = NULL; if (path_prompt("Open", &path)) workspace_open(path, &open_options); free(path);
     } else if (a == SAVE) save();
     else if (a == SAVE_AS) save_to(true);
     else if (a == UNDO) undo_redo(false);
@@ -830,6 +913,11 @@ static bool action(int a) {
     else if (a == REPLACE) search_dialog(true);
     else if (a == SELECT_ALL) { e.anchor = 0; e.pos = e.n; }
     else if (a == ABOUT) about();
+    else if (a == SPLIT) split_window();
+    else if (a == SIZE) size_window();
+    else if (a == CLOSE) close_window();
+    else if (a == SETTINGS) settings_dialog();
+    else if (a == COLORS_DIALOG) colors_dialog();
     else if (a == NEXT) find_next(e.pos);
     else if (a == CASE) { e.match_case = !e.match_case; message(e.match_case ? "Match Case: On." : "Match Case: Off."); }
     else if (a == WHOLE) { e.whole_word = !e.whole_word; message(e.whole_word ? "Match Whole Word Only: On." : "Match Whole Word Only: Off."); }
@@ -872,9 +960,29 @@ static void bracketed_paste(void) {
     }
     insert(s, n); free(s);
 }
+static bool menu_activate(int which) {
+    bool running = action(menu(which));
+    menu_keys = false; repaint_needed = true;
+    return running;
+}
+static int menu_letter(wint_t c) {
+    c = towlower(c);
+    if (c == 'a' || c == 'f') return 0;
+    if (c == 'e') return 1;
+    if (c == 'b' || c == 's') return 2;
+    if (c == 'v') return 3;
+    if (c == 'o') return 4;
+    if (c == 'y' || c == 'h') return 5;
+    return -1;
+}
 static bool handle(wint_t c, int type) {
     if (type != KEY_CODE_YES || c != KEY_MOUSE) e.dragging = false;
     if (type != KEY_CODE_YES) {
+        if (menu_keys && c != 27) {
+            int which = menu_letter(c);
+            if (which >= 0) return menu_activate(which);
+            menu_keys = false; repaint_needed = true;
+        }
         if (c == CTRL('q')) return action(QUIT);
         if (c == CTRL('n')) return action(NEW);
         if (c == CTRL('o')) return action(OPEN);
@@ -890,14 +998,13 @@ static bool handle(wint_t c, int type) {
         if (c == 27) {
             wint_t next; timeout(100); int t = key(&next); timeout(-1);
             if (t == OK) {
-                next = towlower(next);
-                if (next == 'a' || next == 'f') return action(menu(0));
-                if (next == 'e') return action(menu(1));
-                if (next == 'b' || next == 's') return action(menu(2));
-                if (next == 'v') return action(menu(3));
-                if (next == 'o') return action(menu(4));
-                if (next == 'y' || next == 'h') return action(menu(5));
+                if (next >= '1' && next <= '9') { document_select((int)(next - '1')); return true; }
+                int which = menu_letter(next);
+                if (which >= 0) return menu_activate(which);
+                unget_wch(next);
             }
+            else if (t == KEY_CODE_YES) ungetch((int)next);
+            menu_keys = !menu_keys; repaint_needed = true;
             e.anchor = e.pos; return true;
         }
         if (c == 127 || c == 8) c = KEY_BACKSPACE;
@@ -908,7 +1015,17 @@ static bool handle(wint_t c, int type) {
     }
     if (c == KEY_F(1)) return action(ABOUT);
     else if (c == KEY_F(3)) find_next(e.pos);
-    else if (c == KEY_F(10)) return action(menu(0));
+    else if (c == KEY_F(10)) return menu_activate(0);
+    else if (c == K_SPLIT) split_window();
+    else if (c == K_SIZE) size_window();
+    else if (c == K_CLOSE) close_window();
+    else if (c == KEY_F(6)) {
+        if (split_enabled) pane_select(1 - active_pane);
+        else for (int i = 1; i < MAX_DOCS; ++i) {
+            int doc = (active_document + i) % MAX_DOCS;
+            if (documents[doc].s) { document_select(doc); break; }
+        }
+    }
     else if (c == K_COPY) copy_selection(false);
     else if (c == K_PASTE) return action(PASTE);
     else if (c == K_PASTEBEGIN) bracketed_paste();
@@ -916,8 +1033,8 @@ static bool handle(wint_t c, int type) {
     else if (c == KEY_RIGHT || c == KEY_SRIGHT) move_to(e.pos < e.n ? e.pos + 1 : e.n, c == KEY_SRIGHT, false);
     else if (c == KEY_UP || c == K_SUP || c == KEY_SR) vertical(-1, c != KEY_UP);
     else if (c == KEY_DOWN || c == K_SDOWN || c == KEY_SF) vertical(1, c != KEY_DOWN);
-    else if (c == KEY_PPAGE) vertical(-(LINES > 5 ? LINES - 5 : 1), false);
-    else if (c == KEY_NPAGE) vertical(LINES > 5 ? LINES - 5 : 1, false);
+    else if (c == KEY_PPAGE) vertical(-(pane_bottom(active_pane) - EDIT_TOP), false);
+    else if (c == KEY_NPAGE) vertical(pane_bottom(active_pane) - EDIT_TOP, false);
     else if (c == KEY_HOME || c == K_SHOME) move_to(line_start(e.pos), c == K_SHOME, false);
     else if (c == KEY_END || c == K_SEND) move_to(line_end(e.pos), c == K_SEND, false);
     else if (c == K_CTRLLEFT) {
@@ -932,16 +1049,18 @@ static bool handle(wint_t c, int type) {
     } else if (c == KEY_ENTER) insert(L"\n", 1);
     else if (c == KEY_MOUSE) {
         MEVENT m; if (getmouse(&m) != OK) return true;
+        if (split_enabled && !e.dragging && (m.bstate & (BUTTON1_CLICKED | BUTTON1_PRESSED)) && m.y > 0 && m.y < LINES - 2)
+            pane_select(m.y >= split_row ? 1 : 0);
         if (e.dragging && (m.bstate & (BUTTON1_PRESSED | BUTTON1_RELEASED | REPORT_MOUSE_POSITION))) {
             if (LINES < 5 || COLS < 3) { e.dragging = false; return true; }
             int y = m.y, x = m.x;
             if (y < EDIT_TOP) {
                 if (e.top) e.top = line_start(e.top - 1);
                 y = EDIT_TOP;
-            } else if (y >= LINES - 2) {
+            } else if (y >= pane_bottom(active_pane)) {
                 size_t end = line_end(e.top);
                 if (end < e.n) e.top = end + 1;
-                y = LINES - 3;
+                y = pane_bottom(active_pane) - 1;
             }
             if (x < EDIT_LEFT) { if (e.left) --e.left; x = EDIT_LEFT; }
             else if (x >= COLS - 1) { if (e.left < INT_MAX - COLS) ++e.left; x = COLS - 2; }
@@ -952,9 +1071,24 @@ static bool handle(wint_t c, int type) {
         if (m.bstate & BUTTON1_RELEASED) { e.dragging = false; return true; }
         if (m.y == 0 && (m.bstate & (BUTTON1_CLICKED | BUTTON1_PRESSED))) {
             e.dragging = false;
-            return action(menu(menu_from_x(m.x)));
+            return menu_activate(menu_from_x(m.x));
         }
-        if (m.y >= EDIT_TOP && m.y < LINES - 2 && m.x >= EDIT_LEFT && m.x < COLS - 1) {
+        if (m.x == COLS - 1 && m.y >= EDIT_TOP && m.y < pane_bottom(active_pane) &&
+            (m.bstate & (BUTTON1_CLICKED | BUTTON1_PRESSED))) {
+            if (m.y == EDIT_TOP) vertical(-1, false);
+            else if (m.y == pane_bottom(active_pane) - 1) vertical(1, false);
+            else {
+                size_t total = 1;
+                for (size_t i = 0; i < e.n; ++i) if (e.s[i] == L'\n') ++total;
+                int span = pane_bottom(active_pane) - EDIT_TOP - 3;
+                size_t line = span > 0 ? (size_t)((double)(m.y - EDIT_TOP - 1) / span * (double)(total - 1)) : 0;
+                size_t p = 0; int col = column(e.pos);
+                while (line-- && p < e.n) { size_t end = line_end(p); p = end < e.n ? end + 1 : end; }
+                move_to(at_column(p, col), false, false);
+            }
+            return true;
+        }
+        if (m.y >= EDIT_TOP && m.y < pane_bottom(active_pane) && m.x >= EDIT_LEFT && m.x < COLS - 1) {
             size_t p = mouse_position(m.y, m.x);
             mouse_select(p, m.bstate);
             if (m.bstate & BUTTON4_PRESSED) vertical(-3, e.dragging);
@@ -973,12 +1107,14 @@ int main(int argc, char **argv) {
     if (argc > 2) { fputs("Usage: gui [file]\n", stderr); return 1; }
     if (!setlocale(LC_ALL, "" ) || MB_CUR_MAX < 4) die("A UTF-8 locale is required (for example LANG=C.UTF-8).");
     setlocale(LC_MESSAGES, "C");
+    settings_load();
     e.s = copy_text(L"", 0); e.saved = copy_text(L"", 0); e.preferred = -1;
     if (argc == 2 && !load(argv[1])) die(e.message);
     initscr(); screen_ready = true; atexit(cleanup);
     if (!has_colors()) die("A color terminal is required.");
     raw(); noecho(); keypad(stdscr, TRUE); start_color();
-    if (COLOR_PAIRS <= DISABLED) die("The terminal does not provide enough color pairs.");
+    if (COLOR_PAIRS <= PREVIEW) die("The terminal does not provide enough color pairs.");
+    eight_colors = COLORS < 16;
     short white = COLORS >= 16 ? 15 : COLOR_WHITE;
     short blue = COLOR_BLUE, gray = COLOR_WHITE, dark_gray = COLORS >= 16 ? 8 : COLOR_BLACK;
     /* Standard ANSI colors also work when the terminal ignores palette updates. */
@@ -990,12 +1126,17 @@ int main(int argc, char **argv) {
     init_pair(MENU_ACTIVE, white, COLOR_BLACK); init_pair(DISABLED, dark_gray, gray);
     init_pair(HOTKEY, white, gray);
     init_pair(SCROLL_ARROW, white, COLOR_BLACK); init_pair(SCROLL_TRACK, COLOR_BLACK, white);
+    init_pair(BUTTON_EDGE, COLOR_BLACK, gray);
+    if (eight_colors) { init_pair(BUTTON, COLOR_WHITE, COLOR_BLACK); init_pair(TITLE, COLOR_WHITE, COLOR_BLACK); }
+    theme_apply();
     define_key("\033[1;2A", K_SUP); define_key("\033[1;2B", K_SDOWN);
     define_key("\033[1;2D", KEY_SLEFT); define_key("\033[1;2C", KEY_SRIGHT);
     define_key("\033[2;5~", K_COPY); define_key("\033[2;2~", K_PASTE);
     define_key("\033[1;2H", K_SHOME); define_key("\033[1;2F", K_SEND);
     define_key("\033[1;5D", K_CTRLLEFT); define_key("\033[1;5C", K_CTRLRIGHT);
     define_key("\033[200~", K_PASTEBEGIN); define_key("\033[201~", K_PASTEEND);
+    define_key("\033[17;5~", K_SPLIT); define_key("\033[19;5~", K_SIZE);
+    define_key("\033[1;5S", K_CLOSE); define_key("\033[14;5~", K_CLOSE);
     mousemask(ALL_MOUSE_EVENTS | REPORT_MOUSE_POSITION, NULL); mouseinterval(0);
     /* Ask compatible terminals for button-motion events, not just clicks. */
     printf("\033[?1003l\033[?1002h\033[?2004h"); fflush(stdout);
@@ -1005,7 +1146,7 @@ int main(int argc, char **argv) {
         e.message[0] = 0; running = handle(c, t);
     }
     cleanup();
-    free(e.s); free(e.saved); free(e.path); free(e.clip);
-    clear_history(e.undo, &e.un); clear_history(e.redo, &e.rn); return 0;
+    for (int i = 0; i < MAX_DOCS; ++i) document_free(i);
+    return 0;
 }
 #endif

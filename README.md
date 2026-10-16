@@ -17,7 +17,7 @@ The `c-rewrite` branch contains new C code, not a translation of Microsoft Edit'
 - Open and Save As use a classic two-pane browser: File Name, current path, Existing Files and Directories, with OK, Cancel and Help buttons. Use Tab to move between controls, arrows to select an entry and Enter to enter a directory. Saving to another existing file asks before replacing it.
 - Open has a taller Files pane and a shorter Directories pane, followed by Open Read-only, Open Binary and Line Width. Read-only blocks edits and saving. Open Binary opens a **read-only hexadecimal view**, not a binary editor; Line Width is the number of source bytes per row (1–256, default 70). It is disabled for ordinary text files.
 
-The terminal font controls the exact appearance of characters and shadows. Buttons use terminal line characters for thin shadows and ASCII focus markers to avoid missing Unicode glyphs. Standard ANSI colors avoid relying on terminal palette reprogramming.
+The terminal font controls the exact appearance of characters and shadows. All dialogs share white title strips, white buttons with black text, triangular focus markers and a short half-cell black shadow offset down and right. The renderer uses a neutral curses background so blank controls keep their own colors. Eight-color terminals use bold reverse video for white button faces and titles. A UTF-8 font containing half-block and triangle glyphs is required for those details. Standard ANSI colors avoid relying on terminal palette reprogramming.
 
 The editor status bar shows the current one-based Line and Col at the right; columns account for tabs and wide characters. About gui stays open until Enter, Esc, Alt+O or a click on OK; unrelated mouse events do not dismiss it.
 
@@ -44,6 +44,22 @@ Ordinary cursor movement does not erase or rebuild the screen. The editor tracks
 | View / Options menus | Alt+V / Alt+O |
 | Help menu | Alt+Y or Alt+H |
 | Menu bar / About gui | F10 / F1 |
+| Split Window / Size Window | Ctrl+F6 / Ctrl+F8 |
+| Close Window | Ctrl+F4 |
+| Next panel (or next document with a single panel) | F6 |
+| Switch document | Alt+1 through Alt+9 |
+
+Alt combinations highlight menu access letters in white. Esc alone toggles menu access mode; press F, E, S, V, O or H to open a menu. Alt alone can only be detected if the terminal sends an escape event for it. Many terminal emulators send nothing until the next key; F10 opens the menu bar reliably. Alt+A and Alt+Y remain aliases for File and Help.
+
+## View and Options
+
+View contains Split Window, Size Window, Close Window and the open document list, with the shortcuts shown above. Up to nine documents can remain open. New and Open preserve existing documents. Split Window creates a second view of the current document; each panel has its own cursor, selection and scroll position. Choose another document from View or Alt+1–9 to show it in the active panel. Switch panels with F6 or a mouse click. Edits to a shared document appear in both views. The clipboard is shared between documents; undo and redo belong to each document.
+
+Size Window uses Up/Down or mouse movement with the left button held to move the divider; Enter accepts and Esc cancels. Closing one of two panels keeps its document open. Closing the sole panel closes its document, asking about unsaved changes; closing the last document creates a blank one. Quit checks every open document for unsaved changes. A terminal shorter than 12 rows returns to one panel.
+
+Options contains Settings and Colors. Settings changes Tab Stops from 1 to 32 columns without changing file contents. DOS printer port choices are not included in this Linux editor. Colors provides Item, Foreground and Background lists plus a sample, Default, OK, Cancel and Help. It configures normal text, selections, window borders, the menu bar, status bar, keyboard accelerators and disabled items. Cancel discards the draft; Default restores the draft palette and OK applies it. A terminal advertising at least 16 colors displays the complete palette; eight-color terminals use the corresponding base colors.
+
+Preferences are saved when accepted to `$XDG_CONFIG_HOME/gui/settings`, or `~/.config/gui/settings` when XDG_CONFIG_HOME is unset. If writing fails they still apply to the current session and the status bar reports the error. Corrupt preferences fall back to defaults.
 
 The clipboard is internal in this prototype. To paste from another application, use your terminal's paste command (usually Ctrl+Shift+V). Bracketed terminal paste is supported in the document. Some terminals intercept Ctrl+Insert or Shift+Insert.
 
@@ -70,7 +86,7 @@ For an existing checkout:
 ```sh
 cd ~/gui-c
 git pull --ff-only
-make && make test
+make -B && make test
 ./gui sample.txt
 ```
 
@@ -79,13 +95,13 @@ After validating the prototype, `make install` installs to `/usr/local/bin` by d
 
 ## Validation
 
-Core tests cover selection, undo/redo, search, replacement, mouse coordinate mapping, UTF-8/CRLF file I/O, file browser directory scanning, read-only protection and binary hex views. Updated tests have not been run by the assistant.
+Core tests cover selection, undo/redo, search, replacement, mouse coordinate mapping, UTF-8/CRLF file I/O, file browser directory scanning, read-only protection, binary hex views, multiple documents, clipboard transfer, split view cursor independence, tab spacing and preference persistence. Updated tests have not been run by the assistant.
 
-On Linux, also check all selection shortcuts, menu activation, dialog focus, terminal resize, canceled exits with unsaved changes, and failed saves. Compare the appearance against the classic editor references.
+On Linux, also check all selection shortcuts, menu activation (including Alt/F10), every dialog's appearance, split resizing and pane clicks, terminal resize, canceled exits with multiple unsaved documents, preference cancellation and failed saves. Some terminals intercept Ctrl+function keys; the corresponding View menu commands work without those key sequences. Compare the appearance against the classic editor references, particularly in KiTTY.
 
 ## Current scope
 
-One open document and literal search without regular expressions. Text editing requires UTF-8 without NUL bytes; other files can be inspected using Open Binary, a read-only hex view. UTF-8 BOM and uniform LF/CRLF line endings are preserved. Mixed line endings are normalized to CRLF when CRLF is present. Saving over symbolic links is not supported.
+Up to nine documents, two panels and literal search without regular expressions. Text editing requires UTF-8 without NUL bytes; other files can be inspected using Open Binary, a read-only hex view. UTF-8 BOM and uniform LF/CRLF line endings are preserved. Mixed line endings are normalized to CRLF when CRLF is present. Saving over symbolic links is not supported.
 
 The document and up to 64 undo states are stored as memory copies, so this prototype is intended for small and medium text files. Editing operates on Unicode code points; complex emoji and combining sequences are not yet treated as indivisible grapheme clusters.
 

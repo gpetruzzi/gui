@@ -194,6 +194,86 @@ static void test_cursor_repaint_state(void) {
     assert(view_changed(&before, &after));
     document(L"");
 }
+static void test_documents_and_split(void) {
+    document(L"first");
+    e.anchor = 0; e.pos = 5; copy_selection(false);
+    int first = active_document, second = document_new();
+    assert(second >= 0 && second != first && !wcscmp(e.clip, L"first"));
+    action(PASTE); assert(!wcscmp(e.s, L"first"));
+    insert(L" second", 7);
+    document_select(first); assert(!wcscmp(e.s, L"first"));
+    document_select(second); assert(!wcscmp(e.s, L"first second"));
+    undo_redo(false); assert(!wcscmp(e.s, L"first"));
+    document_select(first); assert(!dirty());
+    int old_lines = LINES, old_cols = COLS;
+    LINES = 24; COLS = 80;
+    move_to(1, false, false); split_window();
+    assert(split_enabled && panes[0].doc == first && panes[1].doc == first);
+    pane_select(1); move_to(4, false, false);
+    pane_select(0); assert(e.pos == 1);
+    insert(L"X", 1);
+    assert(!wcscmp(e.s, L"fXirst") && panes[1].pos == 5);
+    pane_select(1); assert(e.pos == 5);
+    document_select(second);
+    assert(panes[0].doc == first && panes[1].doc == second);
+    move_to(2, false, false); pane_select(0); assert(e.pos == 2);
+    pane_select(1); assert(e.pos == 2 && active_document == second);
+    close_window(); assert(!split_enabled && active_document == first);
+    document_select(second); document(L""); close_window();
+    assert(active_document == first && documents[second].s == NULL);
+    document(L"");
+    assert(column(0) == 0);
+    tab_stops = 8; document(L"a\tb"); assert(column(2) == 8);
+    tab_stops = 3; assert(column(2) == 3 && at_column(0, 2) == 1);
+    tab_stops = 8;
+    for (int i = 1; i < MAX_DOCS; ++i) assert(document_new() >= 0);
+    assert(document_new() == -1);
+    document_select(first);
+    for (int i = 0; i < MAX_DOCS; ++i) if (i != first) document_free(i);
+    LINES = old_lines; COLS = old_cols;
+    document(L"");
+}
+static void test_workspace_open(void) {
+    document(L"important"); insert(L"!", 1);
+    int original = active_document;
+    char path[] = "/tmp/gui-workspace-XXXXXX";
+    int fd = mkstemp(path); assert(fd >= 0);
+    assert(write(fd, "loaded", 6) == 6 && close(fd) == 0);
+    const OpenOptions options = {false, false, 70};
+    workspace_open(path, &options);
+    int opened = active_document;
+    assert(opened != original && !wcscmp(e.s, L"loaded"));
+    assert(!wcscmp(documents[original].s, L"!important"));
+    workspace_open(path, &options); assert(active_document == opened);
+    FILE *f = fopen(path, "wb"); assert(f);
+    assert(fwrite("bad\0data", 1, 8, f) == 8); fclose(f);
+    /* A different path reaches the load-failure branch rather than deduplication. */
+    char *other = alloc(strlen(path) + 5); sprintf(other, "%s-bad", path);
+    assert(rename(path, other) == 0);
+    workspace_open(other, &options);
+    assert(active_document == opened && !wcscmp(e.s, L"loaded") && e.message[0]);
+    int count = 0;
+    for (int i = 0; i < MAX_DOCS; ++i) if (documents[i].s) ++count;
+    assert(count == 2);
+    close_window(); assert(active_document == original && dirty());
+    assert(unlink(other) == 0); free(other); document(L"");
+}
+static void test_preferences_roundtrip(void) {
+    char base[] = "/tmp/gui-preferences-XXXXXX"; assert(mkdtemp(base));
+    const char *prior = getenv("XDG_CONFIG_HOME"); char *saved_env = prior ? copy_path(prior) : NULL;
+    assert(setenv("XDG_CONFIG_HOME", base, 1) == 0);
+    settings_load(); assert(tab_stops == 8 && !memcmp(theme, default_theme, sizeof theme));
+    tab_stops = 6; theme[0] = (ThemeColor){14, 4}; settings_save();
+    tab_stops = 2; theme[0] = (ThemeColor){0, 0}; settings_load();
+    assert(tab_stops == 6 && theme[0].fg == 14 && theme[0].bg == 4);
+    char *dir = path_join(base, "gui"), *path = path_join(dir, "settings");
+    FILE *f = fopen(path, "w"); assert(f); fputs("gui 1\ntabs 0\n99 99\n", f); fclose(f);
+    settings_load(); assert(tab_stops == 8 && !memcmp(theme, default_theme, sizeof theme));
+    assert(unlink(path) == 0 && rmdir(dir) == 0 && rmdir(base) == 0);
+    free(dir); free(path);
+    if (saved_env) { assert(setenv("XDG_CONFIG_HOME", saved_env, 1) == 0); free(saved_env); }
+    else assert(unsetenv("XDG_CONFIG_HOME") == 0);
+}
 int main(void) {
     assert(setlocale(LC_ALL, "C.UTF-8"));
     e.s = copy_text(L"", 0); e.saved = copy_text(L"", 0); e.preferred = -1;
@@ -204,8 +284,9 @@ int main(void) {
     test_edit_menu_commands();
     test_mouse_drag_copy_paste();
     test_cursor_repaint_state();
-    free(e.s); free(e.saved); free(e.path); free(e.clip);
-    clear_history(e.undo, &e.un); clear_history(e.redo, &e.rn);
+    test_documents_and_split();
+    test_workspace_open();
+    test_preferences_roundtrip();
+    for (int i = 0; i < MAX_DOCS; ++i) document_free(i);
     puts("Core tests: OK"); return 0;
 }
-
