@@ -4,6 +4,7 @@
 use edit::arena::arena_format;
 use edit::helpers::*;
 use edit::input::{kbmod, vk};
+use edit::oklab::StraightRgba;
 use edit::tui::*;
 
 use crate::localization::*;
@@ -12,8 +13,8 @@ use crate::state::*;
 
 pub fn draw_menubar(ctx: &mut Context, state: &mut State) {
     ctx.menubar_begin();
-    ctx.attr_background_rgba(state.menubar_color_bg);
-    ctx.attr_foreground_rgba(state.menubar_color_fg);
+    ctx.attr_background_rgba(StraightRgba::from_rgba(0xffffffff));
+    ctx.attr_foreground_rgba(StraightRgba::from_rgba(0x000000ff));
     {
         let contains_focus = ctx.contains_focus();
 
