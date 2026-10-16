@@ -1,49 +1,64 @@
-# gui — primera versión del código
+# gui — versión nueva en C
 
-Variante de Microsoft Edit para Debian, Ubuntu y Fedora. Nombre del editor: gui.
-Conserva la licencia MIT y los avisos del proyecto original.
+Editor de terminal para Linux, escrito desde cero en C11 con ncursesw.
+Esta rama `c-rewrite` contiene código nuevo: no es una traducción del código Rust de Microsoft Edit.
+La versión anterior de Rust permanece en `main`.
 
-## Cambios
+**Estado: primer prototipo sin compilar ni probar en ejecución.** No reemplazar todavía la versión instalada. La revisión realizada es de código, no una validación de funcionamiento.
 
-- Fondo azul #0000AA y texto blanco #FFFFFF, independiente del tema del terminal.
-- Menús y barra de estado en tonos azules con texto blanco.
-- Archivos abiertos inicialmente como texto sin resaltado de sintaxis para mantener las letras blancas. Se puede activar un lenguaje desde los menús del editor.
-- Identificación propia en el diálogo Acerca de.
+## Aspecto y controles
 
-## Controles heredados de Edit
+- Fondo azul, texto blanco y barra superior blanca con letras negras.
+- Sin números de línea y sin resaltar la línea donde está el cursor.
+- Solo la selección explícita cambia de color.
+- Diálogos clásicos grises con título claro, campos delimitados, casillas y botones con sombra de media celda.
+- Menús: Alt+A Archivo, Alt+E Edición, Alt+V Ver, Alt+Y Ayuda. F10 abre los menús.
+- Ctrl+B Buscar; Ctrl+R Reemplazar; F3 busca la siguiente coincidencia.
+- Shift+flechas selecciona; Ctrl+A selecciona todo.
+- Ctrl+C / Ctrl+Insert copia; Ctrl+X corta; Ctrl+V / Shift+Insert pega.
+- Ctrl+S guarda; Ctrl+O abre; Ctrl+N crea un documento; Ctrl+Q sale.
+- Ctrl+Z deshace y Ctrl+Y rehace, con hasta 64 estados por documento.
+- Mouse para colocar el cursor, seleccionar y usar menús. El diálogo de búsqueda también permite activar controles con el mouse.
 
-Shift + flechas selecciona; Ctrl+C o Ctrl+Insert copia;
-Ctrl+V o Shift+Insert pega; Ctrl+X corta; Ctrl+S guarda.
-El terminal debe transmitir esos atajos a la aplicación. Algunos terminales capturan Shift+Insert para pegar desde el portapapeles del sistema.
-Edit también mantiene un portapapeles interno; su sincronización con el del sistema depende del soporte OSC 52 del terminal.
+El portapapeles de esta primera versión es interno. Para pegar texto de otra aplicación se utiliza el pegado del terminal (habitualmente Ctrl+Shift+V). El editor recibe también el pegado delimitado del terminal. Algunos terminales capturan Ctrl+Insert o Shift+Insert antes de enviarlos a la aplicación.
 
-## Compilar en Linux
-
-Se necesita Rust 1.93 o posterior con Cargo, un compilador de C y acceso a las dependencias de Cargo.
-
-Debian / Ubuntu: `sudo apt install build-essential pkg-config libicu-dev`
-
-Fedora: `sudo dnf install gcc pkgconf-pkg-config libicu-devel rpm-build`
-
-Con Rust instalado:
+## Preparar Debian o Ubuntu
 
 ```sh
-sh build-linux.sh
-./dist/gui archivo.txt
+apt update
+apt install build-essential libncurses-dev git
+git clone --branch c-rewrite --single-branch https://github.com/gpetruzzi/gui.git gui-c
+cd gui-c
 ```
 
-Instalación personal: `sh build-linux.sh --install`.
+En Fedora, los requisitos son `gcc make ncurses-devel git`.
 
-Paquete Debian/Ubuntu: `sh build-linux.sh --deb` (requiere dpkg-deb).
+Cuando quieras compilar y probar, de forma separada de la versión instalada:
 
-Paquete Fedora: `sh build-linux.sh --rpm` (requiere rpmbuild).
+```sh
+make
+./gui prueba.txt
+```
 
-Los paquetes se generan para la arquitectura y las bibliotecas del sistema donde se compilan. Compilar por separado en cada distribución de destino; no se ha comprobado compatibilidad entre versiones.
+No hace falta Rust. Para una futura instalación, después de verificar el prototipo: `make install` (por defecto en `/usr/local/bin`).
 
-## Estado de validación
+## Comprobaciones pendientes en Linux
 
-Cambios revisados estáticamente. Esta máquina Windows no dispone de Cargo ni de un entorno Linux operativo: aún no se han compilado, ejecutado ni probado los paquetes.
-En Linux ejecutar `cargo test --locked -p edit` y verificar visualmente colores, selección, guardado y pegado antes de usar con archivos importantes.
+Se incluyen pruebas del núcleo (selección, historial, búsqueda, reemplazo y guardado UTF-8/CRLF). Se ejecutan con `make test`; **todavía no se compilaron ni se ejecutaron**.
 
+1. Abrir un archivo UTF-8 con tildes, editarlo y guardar una copia.
+2. Comprobar selección con las cuatro flechas y copiar/pegar con ambos juegos de atajos.
+3. Verificar visualmente la línea sin resaltado y las sombras de botones.
+4. Buscar, distinguir mayúsculas, palabras completas y reemplazar una o todas las coincidencias.
+5. Deshacer y rehacer inserción, borrado, pegado y reemplazo de varias coincidencias.
+6. Cancelar la apertura/salida con cambios sin guardar y comprobar que no se pierden.
+7. Comprobar archivos con saltos LF y CRLF, guardado fallido y cambio de tamaño de terminal.
 
-Proyecto original: https://github.com/microsoft/edit. Documentación original: [README-UPSTREAM.md](README-UPSTREAM.md).
+## Alcance de este prototipo
+
+Un documento abierto a la vez, búsqueda literal sin expresiones regulares y archivos UTF-8. No se convierten archivos binarios ni codificaciones antiguas. Se preserva el BOM UTF-8 y el formato LF/CRLF uniforme; los archivos con saltos mezclados se normalizan a CRLF al guardar si contienen CRLF. Los enlaces simbólicos no se sobrescriben.
+
+El almacenamiento y el historial usan copias en memoria: esta primera implementación está orientada a textos pequeños y medianos. La edición se hace por puntos de código Unicode; todavía no se agrupan emojis compuestos ni todos los caracteres combinados al mover o borrar. La presentación exacta depende de la fuente y de las capacidades de la terminal.
+
+Licencia MIT. La interfaz usa ncursesw, una biblioteca independiente. El cuadro Acerca de identifica gui y su propia versión, 0.1.0.
+
