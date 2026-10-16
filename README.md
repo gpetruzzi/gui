@@ -12,6 +12,7 @@ The `c-rewrite` branch contains new C code, not a translation of Microsoft Edit'
 - Light gray menu bar and bottom help bar with black text.
 - No line numbers and no current-line highlight. Only explicitly selected text changes color.
 - Gray dialogs with white title strips, dotted input fields, checkboxes and white buttons with half-cell black shadows.
+- Open and Save As use a classic two-pane browser: File Name, current path, Existing Files and Directories, with OK, Cancel and Help buttons. Use Tab to move between controls, arrows to select an entry and Enter to enter a directory. Saving to another existing file asks before replacing it.
 
 The terminal font controls the exact appearance of characters and shadows.
 
@@ -27,6 +28,7 @@ The terminal font controls the exact appearance of characters and shadows.
 | Cut | Ctrl+X |
 | Paste | Ctrl+V or Shift+Insert |
 | Save / Open / New | Ctrl+S / Ctrl+O / Ctrl+N |
+| Save As | File menu → Save As... |
 | Quit | Ctrl+Q |
 | Undo / Redo | Ctrl+Z / Ctrl+Y |
 | File menu | Alt+A or Alt+F |
@@ -66,7 +68,7 @@ After validating the prototype, `make install` installs to `/usr/local/bin` by d
 
 ## Validation
 
-Core tests cover selection, undo/redo, search, replacement, mouse coordinate mapping, and UTF-8/CRLF file I/O. Updated tests have not been run by the assistant.
+Core tests cover selection, undo/redo, search, replacement, mouse coordinate mapping, UTF-8/CRLF file I/O, and file browser directory scanning. Updated tests have not been run by the assistant.
 
 On Linux, also check all selection shortcuts, menu activation, dialog focus, terminal resize, canceled exits with unsaved changes, and failed saves. Compare the appearance against the classic editor references.
 

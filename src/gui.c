@@ -344,37 +344,19 @@ static void field_key(wchar_t *s, size_t *pos, size_t cap, wint_t c, int type) {
         memmove(s + *pos + 1, s + *pos, (n - *pos + 1) * sizeof(*s)); s[(*pos)++] = (wchar_t)c;
     }
 }
-static bool path_prompt(const char *title, char **out) {
-    if (small_screen(7, 62)) return false;
-    wchar_t s[FIELD] = {0}; size_t p = 0;
-    if (*out) {
-        size_t n = mbstowcs(s, *out, FIELD - 1);
-        if (n != (size_t)-1) { s[n] = 0; p = n; } else s[0] = 0;
-    }
-    int focus = 0;
-    for (;;) {
-        Box b = box_open(title, 7, 62);
-        attrset(COLOR_PAIR(DIALOG)); text_at(b.y + 2, b.x + 2, "File Name:", 9);
-        button(b, 4, 13, "OK", focus == 1); button(b, 4, 38, "Cancel", focus == 2);
-        field(b, 2, 12, 45, s, p, focus == 0); refresh();
-        wint_t c; int t = key(&c); if (t == ERR) continue;
-        if (c == 27 || (t == KEY_CODE_YES && c == KEY_RESIZE)) return false;
-        if (c == '\t') focus = (focus + 1) % 3;
-        else if (t == KEY_CODE_YES && c == KEY_BTAB) focus = (focus + 2) % 3;
-        else if (c == '\n' || c == '\r' || (t == KEY_CODE_YES && c == KEY_ENTER)) {
-            if (focus == 2) return false;
-            if (!s[0]) continue;
-            size_t n = wcstombs(NULL, s, 0);
-            if (n == (size_t)-1) { message("Invalid file name for the current locale."); return false; }
-            char *path = alloc(n + 1); wcstombs(path, s, n + 1); free(*out); *out = path; return true;
-        } else if (!focus) field_key(s, &p, FIELD, c, t);
-    }
-}
-static bool save(void) {
+#include "file_picker.h"
+
+static bool save_to(bool save_as) {
+    bool prompted = save_as || !e.path;
     char *path = e.path ? copy_path(e.path) : NULL;
-    if (!path && !path_prompt("Save As", &path)) return false;
+    if (prompted && !path_prompt("Save As", &path)) { free(path); return false; }
     struct stat st; bool exists = lstat(path, &st) == 0;
     if (exists && !S_ISREG(st.st_mode)) { message("Save requires a regular file, not a symbolic link."); free(path); return false; }
+    if (exists && prompted) {
+        struct stat current;
+        bool same_file = e.path && stat(e.path, &current) == 0 && current.st_dev == st.st_dev && current.st_ino == st.st_ino;
+        if (!same_file && !overwrite_prompt(path)) { free(path); return false; }
+    }
     char *temp = alloc(strlen(path) + 16); sprintf(temp, "%s.gui-XXXXXX", path);
     int fd = mkstemp(temp);
     if (fd < 0) { message(strerror(errno)); free(temp); free(path); return false; }
@@ -399,6 +381,8 @@ static bool save(void) {
     }
     free(temp); free(path); return ok;
 }
+static bool save(void) { return save_to(false); }
+
 static bool may_discard(void) {
     if (!dirty()) return true;
     int answer = confirm("Unsaved Changes", "Save your changes before continuing?");
@@ -559,11 +543,11 @@ static void about(void) {
     button(b, 6, 21, "OK", true); refresh();
     wint_t c; key(&c);
 }
-enum { NONE, NEW, OPEN, SAVE, QUIT, UNDO, REDO, COPY, CUT, PASTE, FIND, REPLACE, SELECT_ALL, ABOUT, NEXT, CASE, WHOLE };
+enum { NONE, NEW, OPEN, SAVE, QUIT, UNDO, REDO, COPY, CUT, PASTE, FIND, REPLACE, SELECT_ALL, ABOUT, NEXT, CASE, WHOLE, SAVE_AS };
 static int menu(int which) {
 restart:;
-    const char *file[] = {"New            Ctrl+N", "Open           Ctrl+O", "Save           Ctrl+S", "Exit           Ctrl+Q"};
-    const int fa[] = {NEW, OPEN, SAVE, QUIT};
+    const char *file[] = {"New            Ctrl+N", "Open           Ctrl+O", "Save           Ctrl+S", "Save As...", "Exit           Ctrl+Q"};
+    const int fa[] = {NEW, OPEN, SAVE, SAVE_AS, QUIT};
     const char *edit[] = {"Undo           Ctrl+Z", "Redo           Ctrl+Y", "Copy           Ctrl+C", "Cut            Ctrl+X", "Paste          Ctrl+V", "Find           Ctrl+B", "Replace        Ctrl+R", "Select All     Ctrl+A"};
     const int ea[] = {UNDO, REDO, COPY, CUT, PASTE, FIND, REPLACE, SELECT_ALL};
     const char *search[] = {"Find           Ctrl+B", "Replace        Ctrl+R", "Find Next      F3"};
@@ -575,7 +559,7 @@ restart:;
     const char *help[] = {"About gui"}; const int ha[] = {ABOUT};
     const char **labels = which == 0 ? file : which == 1 ? edit : which == 2 ? search : which == 3 ? view : which == 4 ? options : help;
     const int *actions = which == 0 ? fa : which == 1 ? ea : which == 2 ? sa : which == 3 ? va : which == 4 ? oa : ha;
-    int count = which == 0 ? 4 : which == 1 ? 8 : which == 2 ? 3 : which == 5 ? 1 : 2;
+    int count = which == 0 ? 5 : which == 1 ? 8 : which == 2 ? 3 : which == 5 ? 1 : 2;
     if (small_screen(count + 3, 29)) return NONE;
     int selected = 0, x = menu_x[which];
     if (x + 29 > COLS) x = COLS - 29;
@@ -621,6 +605,7 @@ static bool action(int a) {
         if (!may_discard()) return true;
         char *path = NULL; if (path_prompt("Open File", &path)) load(path); free(path);
     } else if (a == SAVE) save();
+    else if (a == SAVE_AS) save_to(true);
     else if (a == UNDO) undo_redo(false);
     else if (a == REDO) undo_redo(true);
     else if (a == COPY) copy_selection(false);

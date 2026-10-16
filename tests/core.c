@@ -80,11 +80,34 @@ static void test_utf8_and_disk(void) {
     assert(!wcscmp(e.s, L"áéñ\nsegunda\n"));
     assert(unlink(path) == 0); assert(rmdir(dir) == 0);
 }
+static void test_file_picker_lists(void) {
+    char dir[] = "/tmp/gui-browser-test-XXXXXX";
+    assert(mkdtemp(dir));
+    char *before = realpath(".", NULL); assert(before);
+    char *file = path_join(dir, "sample.txt"), *subdir = path_join(dir, "folder");
+    assert(mkdir(subdir, 0700) == 0);
+    FILE *f = fopen(file, "wb"); assert(f); fclose(f);
+    FileList files = {0}, dirs = {0};
+    assert(directory_scan(dir, &files, &dirs));
+    assert(files.n == 1 && !strcmp(files.names[0], "sample.txt"));
+    assert(dirs.n == 2 && !strcmp(dirs.names[0], "..") && !strcmp(dirs.names[1], "folder"));
+    char *missing = path_join(dir, "missing");
+    assert(!directory_scan(missing, &files, &dirs));
+    assert(files.n == 1 && dirs.n == 2);
+    char *after = realpath(".", NULL); assert(after && !strcmp(before, after));
+    wchar_t name[FIELD] = {0}; size_t pos = 0;
+    assert(file_name_set(name, &pos, "áé.txt") && !wcscmp(name, L"áé.txt") && pos == 6);
+    char *absolute = path_join(dir, "/tmp/gui-absolute"); assert(!strcmp(absolute, "/tmp/gui-absolute"));
+    list_free(&files); list_free(&dirs);
+    assert(unlink(file) == 0); assert(rmdir(subdir) == 0); assert(rmdir(dir) == 0);
+    free(before); free(after); free(file); free(subdir); free(missing); free(absolute);
+}
 int main(void) {
     assert(setlocale(LC_ALL, "C.UTF-8"));
     e.s = copy_text(L"", 0); e.saved = copy_text(L"", 0); e.preferred = -1;
     test_selection_and_undo(); test_search_and_replace();
     test_lines_and_history_limit(); test_utf8_and_disk();
+    test_file_picker_lists();
     free(e.s); free(e.saved); free(e.path); free(e.clip);
     clear_history(e.undo, &e.un); clear_history(e.redo, &e.rn);
     puts("Core tests: OK"); return 0;
