@@ -17,7 +17,7 @@ pub fn draw_menubar(ctx: &mut Context, state: &mut State) {
     {
         let contains_focus = ctx.contains_focus();
 
-        if ctx.menubar_menu_begin(loc(LocId::File), 'F') {
+        if ctx.menubar_menu_begin(loc(LocId::File), 'A') {
             draw_menu_file(ctx, state);
         }
         if !contains_focus && ctx.consume_shortcut(vk::F10) {
@@ -31,7 +31,7 @@ pub fn draw_menubar(ctx: &mut Context, state: &mut State) {
                 draw_menu_view(ctx, state);
             }
         }
-        if ctx.menubar_menu_begin(loc(LocId::Help), 'H') {
+        if ctx.menubar_menu_begin(loc(LocId::Help), 'Y') {
             draw_menu_help(ctx, state);
         }
     }
