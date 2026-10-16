@@ -3,7 +3,7 @@
 Maintainer: **Guillermo Petruzzi <gpetruzzi@gmail.com>**.
 
 These files prepare a local Debian package of gui 1.0. They do not mean
-that Debian has accepted gui. The current candidate is `1.0-1~local2`, targeting `unstable` for clean-environment
+that Debian has accepted gui. The current candidate is `1.0-1~local3`, targeting `unstable` for clean-environment
 review. This target only records the intended distribution; it does not upload
 the package or imply archive acceptance.
 
@@ -43,7 +43,7 @@ On success, artifacts are copied to `dist/debian/`.
 On Debian amd64, expect a main package named:
 
 ```text
-dist/debian/gui_1.0-1~local2_amd64.deb
+dist/debian/gui_1.0-1~local3_amd64.deb
 ```
 
 The architecture suffix differs on other machines. Debug packages, build
@@ -51,9 +51,9 @@ metadata and the upstream source archive may also be produced. Review package
 contents and the corresponding changes file before installing:
 
 ```sh
-dpkg-deb --info dist/debian/gui_1.0-1~local2_amd64.deb
-dpkg-deb --contents dist/debian/gui_1.0-1~local2_amd64.deb
-lintian --pedantic dist/debian/gui_1.0-1~local2_amd64.changes
+dpkg-deb --info dist/debian/gui_1.0-1~local3_amd64.deb
+dpkg-deb --contents dist/debian/gui_1.0-1~local3_amd64.deb
+lintian --pedantic dist/debian/gui_1.0-1~local3_amd64.changes
 ```
 
 Review Lintian output rather than assuming that a completed build is sufficient
@@ -65,7 +65,7 @@ results are claimed by the packaging files themselves.
 Run the installation as root:
 
 ```sh
-apt install ./dist/debian/gui_1.0-1~local2_amd64.deb
+apt install ./dist/debian/gui_1.0-1~local3_amd64.deb
 ```
 
 Then test the packaged executable and manual:

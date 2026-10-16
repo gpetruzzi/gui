@@ -1,3 +1,10 @@
+gui (1.0-1~local3) unstable; urgency=medium
+
+  * Remove the redundant unversioned Build-Depends on essential ncurses-base.
+    Keep libncurses-dev as the ncurses development dependency.
+
+ -- Guillermo Petruzzi <gpetruzzi@gmail.com>  Fri, 16 Oct 2026 15:30:00 -0300
+
 gui (1.0-1~local2) unstable; urgency=medium
 
   * Target unstable for clean-environment review and avoid the
