@@ -1,21 +1,5 @@
-gui (1.0-1~local3) unstable; urgency=medium
+gui (1.0-1) unstable; urgency=medium
 
-  * Remove the redundant unversioned Build-Depends on essential ncurses-base.
-    Keep libncurses-dev as the ncurses development dependency.
+  * Initial release. (Closes: #1151078)
 
- -- Guillermo Petruzzi <gpetruzzi@gmail.com>  Fri, 16 Oct 2026 15:30:00 -0300
-
-gui (1.0-1~local2) unstable; urgency=medium
-
-  * Target unstable for clean-environment review and avoid the
-    unreleased-changes Lintian error in generated changes files.
-
- -- Guillermo Petruzzi <gpetruzzi@gmail.com>  Fri, 16 Oct 2026 15:05:00 -0300
-
-gui (1.0-1~local1) UNRELEASED; urgency=medium
-
-  * Prepare initial Debian packaging for local build and review.
-  * Install the editor and its manual page under /usr.
-  * Run core tests during builds and provide installed CLI smoke tests.
-
- -- Guillermo Petruzzi <gpetruzzi@gmail.com>  Fri, 16 Oct 2026 15:00:00 -0300
+ -- Guillermo Petruzzi <gpetruzzi@gmail.com>  Fri, 16 Oct 2026 16:00:00 -0300

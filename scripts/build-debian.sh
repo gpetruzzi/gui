@@ -35,9 +35,18 @@ upstream=${version%-*}
 upstream=${upstream#*:}
 name="$package-$upstream"
 source_dir="$build_root/$name"
-mv "$snapshot" "$source_dir"
+# Freeze upstream sources at the published tag; take only debian/ from HEAD.
+upstream_ref="refs/tags/v$upstream"
+if ! git rev-parse --verify "$upstream_ref^{commit}" >/dev/null 2>&1; then
+    echo "Missing release tag v$upstream. Run git fetch origin --tags." >&2
+    exit 1
+fi
+mkdir "$source_dir"
+git archive --format=tar --output="$build_root/upstream.tar" "$upstream_ref"
+tar -xf "$build_root/upstream.tar" --exclude=debian -C "$source_dir"
+cp -R "$snapshot/debian" "$source_dir/debian"
 chmod 755 "$source_dir"
-commit_epoch=$(git show -s --format=%ct HEAD)
+commit_epoch=$(git show -s --format=%ct "$upstream_ref")
 tar --sort=name --mtime="@$commit_epoch" --owner=0 --group=0 --numeric-owner \
     --exclude="$name/debian" -cJf "$build_root/${package}_${upstream}.orig.tar.xz" -C "$build_root" "$name"
 
