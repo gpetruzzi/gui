@@ -291,8 +291,15 @@ static PaintCache paint_cache[2];
 
 /* Binary offsets always refer to source bytes, never formatted hex text. */
 static int binary_text_width(void) {
-    /* Ten source bytes per row; the hex pane occupies exactly 29 cells. */
-    return 10;
+    /* Use every text cell up to the fixed 29-column hex pane. */
+    int width = COLS - 42;
+    return width > 0 ? width : 1;
+}
+static size_t binary_hex_top(void) {
+    size_t width = (size_t)binary_text_width();
+    size_t text_row = e.pos >= e.top ? (e.pos - e.top) / width : 0;
+    size_t hex_row = e.pos / 10;
+    return (hex_row > text_row ? hex_row - text_row : 0) * 10;
 }
 static void draw_binary_pane(int pane, int *cy, int *cx) {
     int top = pane_top(pane), bottom = pane_bottom(pane);
@@ -316,6 +323,7 @@ static void draw_binary_pane(int pane, int *cy, int *cx) {
     char title[256]; snprintf(title, sizeof title, " %s [Binary / Read-only] ", e.path ? e.path : "");
     attrset(COLOR_PAIR(BAR)); text_at(top, 1, title, COLS - 2);
     size_t a, b; range(&a, &b);
+    size_t hex_top = binary_hex_top();
     for (int y = top + 1; y < bottom; ++y) {
         attrset(COLOR_PAIR(EDIT)); mvhline(y, 0, ' ', COLS);
         size_t off = e.top + (size_t)(y - top - 1) * (size_t)width;
@@ -328,6 +336,13 @@ static void draw_binary_pane(int pane, int *cy, int *cx) {
             bool selected = (at >= a && at < b) || at == e.pos;
             attrset(COLOR_PAIR(selected ? SELECT : EDIT));
             wide_at(y, 11 + x, e.s[at]);
+
+        }
+        size_t hex_off = hex_top + (size_t)(y - top - 1) * 10;
+        for (int x = 0; x < 10 && hex_off < e.n && (size_t)x < e.n - hex_off; ++x) {
+            size_t at = hex_off + (size_t)x;
+            bool selected = (at >= a && at < b) || at == e.pos;
+            attrset(COLOR_PAIR(selected ? SELECT : EDIT));
             char hex[4]; snprintf(hex, sizeof hex, "%02X", e.binary_bytes[at]);
             text_at(y, COLS - 30 + x * 3, hex, 2);
         }
@@ -996,10 +1011,13 @@ static size_t mouse_position(int y, int x) {
     if (e.binary_view) {
         int width = binary_text_width();
         int hex_start = COLS - 30;
-        int col = x >= hex_start ? (x - hex_start) / 3 : x - 11;
+        bool hex = x >= hex_start;
+        int col = hex ? (x - hex_start) / 3 : x - 11;
+        int row_width = hex ? 10 : width;
         if (col < 0) col = 0;
-        if (col >= width) col = width - 1;
-        size_t p = e.top + (size_t)(y - EDIT_TOP) * (size_t)width + (size_t)col;
+        if (col >= row_width) col = row_width - 1;
+        size_t start = hex ? binary_hex_top() : e.top;
+        size_t p = start + (size_t)(y - EDIT_TOP) * (size_t)row_width + (size_t)col;
         return p < e.n ? p : e.n;
     }
     size_t p = e.top;

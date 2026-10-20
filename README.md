@@ -184,11 +184,13 @@ history are preserved. Failed opens keep the empty document.
 
 ## Binary viewer layout
 
-Open Binary displays byte offsets at the left, readable characters in the
-middle and a wide hexadecimal pane at the right. Both panes show the same
-bytes on each row and scroll together through the entire file. The hex pane is fixed at ten bytes per row: 29 characters including spaces,
-aligned to the right. The cursor byte is highlighted
-in both panes; selecting text highlights the corresponding hex bytes too.
-Click or drag in either pane to move or select. Non-printable bytes appear as
-dots. Arrow keys, Page Up/Down and Home/End use source-byte positions.
-The layout reflows on resize, requires at least 53 columns and stays read-only.
+Open Binary fills the available left pane with readable ASCII characters,
+using dots for non-printable bytes. Source offsets appear at the left.
+The right pane stays fixed at ten bytes per row (29 characters with spaces).
+The panes wrap independently: ASCII uses the available width; hex uses ten
+bytes. Moving the cursor scrolls the hexadecimal view to keep the same byte
+visible and highlighted in both panes. Selecting in either pane highlights
+the corresponding bytes. Clicking a hex byte moves to its source position.
+Arrow keys and Page Up/Down move through the ASCII layout. Resize reflows
+the text while preserving the byte position. The viewer remains read-only
+and requires at least 53 terminal columns.
