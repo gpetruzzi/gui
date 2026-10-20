@@ -291,18 +291,17 @@ static PaintCache paint_cache[2];
 
 /* Binary offsets always refer to source bytes, never formatted hex text. */
 static int binary_text_width(void) {
-    /* Each byte uses one text cell and three hex cells, plus borders. */
-    int width = (COLS - 13) / 4;
-    return width > 0 ? width : 1;
+    /* Ten source bytes per row; the hex pane occupies exactly 29 cells. */
+    return 10;
 }
 static void draw_binary_pane(int pane, int *cy, int *cx) {
     int top = pane_top(pane), bottom = pane_bottom(pane);
     int height = bottom - top - 1, width = binary_text_width();
     if (height < 1) return;
-    if (COLS < 40) {
+    if (COLS < 53) {
         attrset(COLOR_PAIR(EDIT));
         for (int y = top; y <= bottom; ++y) mvhline(y, 0, ' ', COLS);
-        text_at(top + 1, 0, "Enlarge window for binary view (40 cols).", COLS);
+        text_at(top + 1, 0, "Enlarge window for binary view (53 cols).", COLS);
         if (pane == active_pane) { *cy = top + 1; *cx = 0; }
         return;
     }
@@ -330,11 +329,11 @@ static void draw_binary_pane(int pane, int *cy, int *cx) {
             attrset(COLOR_PAIR(selected ? SELECT : EDIT));
             wide_at(y, 11 + x, e.s[at]);
             char hex[4]; snprintf(hex, sizeof hex, "%02X", e.binary_bytes[at]);
-            text_at(y, 12 + width + x * 3, hex, 2);
+            text_at(y, COLS - 30 + x * 3, hex, 2);
         }
         attrset(COLOR_PAIR(FRAME));
         wide_at(y, 0, L'\u2502'); wide_at(y, 9, L'\u2502');
-        wide_at(y, 11 + width, L'\u2502'); wide_at(y, COLS - 1, L'\u2502');
+        wide_at(y, COLS - 31, L'\u2502'); wide_at(y, COLS - 1, L'\u2502');
     }
     if (pane == active_pane) {
         *cy = top + 1 + (int)(row - first);
@@ -996,7 +995,7 @@ static bool action(int a) {
 static size_t mouse_position(int y, int x) {
     if (e.binary_view) {
         int width = binary_text_width();
-        int hex_start = 12 + width;
+        int hex_start = COLS - 30;
         int col = x >= hex_start ? (x - hex_start) / 3 : x - 11;
         if (col < 0) col = 0;
         if (col >= width) col = width - 1;
@@ -1167,8 +1166,8 @@ static bool handle(wint_t c, int type) {
                     move_to(e.n - e.pos > step ? e.pos + step : e.n, false, false);
                 }
 #endif
-                else if (m.x >= 11 && m.x < 12 + binary_text_width() * 4 &&
-                         m.x != 11 + binary_text_width())
+                else if (m.x >= 11 && m.x < COLS - 1 &&
+                         m.x != COLS - 31)
                     mouse_select(mouse_position(m.y, m.x), m.bstate);
             }
             return true;

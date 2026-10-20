@@ -186,10 +186,9 @@ history are preserved. Failed opens keep the empty document.
 
 Open Binary displays byte offsets at the left, readable characters in the
 middle and a wide hexadecimal pane at the right. Both panes show the same
-bytes on each row and scroll together through the entire file. Each hex byte
-uses two digits plus spacing, making the hex pane roughly three times the
-previous inspector width on a typical terminal. The cursor byte is highlighted
+bytes on each row and scroll together through the entire file. The hex pane is fixed at ten bytes per row: 29 characters including spaces,
+aligned to the right. The cursor byte is highlighted
 in both panes; selecting text highlights the corresponding hex bytes too.
 Click or drag in either pane to move or select. Non-printable bytes appear as
 dots. Arrow keys, Page Up/Down and Home/End use source-byte positions.
-The layout reflows on resize, requires at least 40 columns and stays read-only.
+The layout reflows on resize, requires at least 53 columns and stays read-only.
