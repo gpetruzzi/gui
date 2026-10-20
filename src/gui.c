@@ -291,7 +291,8 @@ static PaintCache paint_cache[2];
 
 /* Binary offsets always refer to source bytes, never formatted hex text. */
 static int binary_text_width(void) {
-    int width = COLS - 2 - 10 - 19;
+    /* Each byte uses one text cell and three hex cells, plus borders. */
+    int width = (COLS - 13) / 4;
     return width > 0 ? width : 1;
 }
 static void draw_binary_pane(int pane, int *cy, int *cx) {
@@ -325,20 +326,15 @@ static void draw_binary_pane(int pane, int *cy, int *cx) {
         }
         for (int x = 0; x < width && off < e.n && (size_t)x < e.n - off; ++x) {
             size_t at = off + (size_t)x;
-            attrset(COLOR_PAIR(at >= a && at < b ? SELECT : EDIT));
+            bool selected = (at >= a && at < b) || at == e.pos;
+            attrset(COLOR_PAIR(selected ? SELECT : EDIT));
             wide_at(y, 11 + x, e.s[at]);
+            char hex[4]; snprintf(hex, sizeof hex, "%02X", e.binary_bytes[at]);
+            text_at(y, 12 + width + x * 3, hex, 2);
         }
         attrset(COLOR_PAIR(FRAME));
         wide_at(y, 0, L'\u2502'); wide_at(y, 9, L'\u2502');
         wide_at(y, 11 + width, L'\u2502'); wide_at(y, COLS - 1, L'\u2502');
-    }
-    /* A fixed narrow inspector follows the active cursor, six bytes total. */
-    int hx = 12 + width;
-    attrset(COLOR_PAIR(BAR)); text_at(top + 1, hx, "Hex: cursor + 0..5", COLS - hx - 1);
-    attrset(COLOR_PAIR(EDIT));
-    if (top + 2 < bottom) for (size_t i = 0; i < 6 && e.pos < e.n && i < e.n - e.pos; ++i) {
-        char hex[4]; snprintf(hex, sizeof hex, "%02X", e.binary_bytes[e.pos + i]);
-        text_at(top + 2, hx + (int)i * 3, hex, COLS - hx - (int)i * 3 - 1);
     }
     if (pane == active_pane) {
         *cy = top + 1 + (int)(row - first);
@@ -999,7 +995,9 @@ static bool action(int a) {
 }
 static size_t mouse_position(int y, int x) {
     if (e.binary_view) {
-        int width = binary_text_width(), col = x - 11;
+        int width = binary_text_width();
+        int hex_start = 12 + width;
+        int col = x >= hex_start ? (x - hex_start) / 3 : x - 11;
         if (col < 0) col = 0;
         if (col >= width) col = width - 1;
         size_t p = e.top + (size_t)(y - EDIT_TOP) * (size_t)width + (size_t)col;
@@ -1169,7 +1167,8 @@ static bool handle(wint_t c, int type) {
                     move_to(e.n - e.pos > step ? e.pos + step : e.n, false, false);
                 }
 #endif
-                else if (m.x >= 11 && m.x < 11 + binary_text_width())
+                else if (m.x >= 11 && m.x < 12 + binary_text_width() * 4 &&
+                         m.x != 11 + binary_text_width())
                     mouse_select(mouse_position(m.y, m.x), m.bstate);
             }
             return true;

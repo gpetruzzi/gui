@@ -184,8 +184,12 @@ history are preserved. Failed opens keep the empty document.
 
 ## Binary viewer layout
 
-Open Binary displays byte offsets at the left, a wide text pane and a narrow
-six-byte hexadecimal inspector at the right. The inspector follows the cursor;
-non-printable bytes appear as dots in the text pane. Arrow keys, Page Up/Down,
-Home/End and mouse selection use source-byte positions. The view reflows when
-the terminal is resized, requires at least 40 columns and remains read-only.
+Open Binary displays byte offsets at the left, readable characters in the
+middle and a wide hexadecimal pane at the right. Both panes show the same
+bytes on each row and scroll together through the entire file. Each hex byte
+uses two digits plus spacing, making the hex pane roughly three times the
+previous inspector width on a typical terminal. The cursor byte is highlighted
+in both panes; selecting text highlights the corresponding hex bytes too.
+Click or drag in either pane to move or select. Non-printable bytes appear as
+dots. Arrow keys, Page Up/Down and Home/End use source-byte positions.
+The layout reflows on resize, requires at least 40 columns and stays read-only.
