@@ -335,6 +335,9 @@ static void draw_binary_pane(int pane, int *cy, int *cx) {
     char title[256]; snprintf(title, sizeof title, " %s%s [Binary / %s] ",
         e.path ? e.path : "", dirty() ? " *" : "",
         e.read_only ? "Read-only" : e.hex_focus ? "Edit HEX" : "Edit ASCII");
+    /* File names may contain control bytes; never let them move the terminal cursor. */
+    for (size_t i = 0; title[i]; ++i)
+        if ((unsigned char)title[i] < 32 || title[i] == 127) title[i] = '?';
     attrset(COLOR_PAIR(BAR)); text_at(top, 1, title, COLS - 2);
     size_t a, b; range(&a, &b);
     size_t hex_top = binary_hex_top();
@@ -358,7 +361,8 @@ static void draw_binary_pane(int pane, int *cy, int *cx) {
             bool selected = (at >= a && at < b) || at == e.pos;
             attrset(COLOR_PAIR(selected ? SELECT : EDIT));
             char hex[4]; snprintf(hex, sizeof hex, "%02X", e.binary_bytes[at]);
-            text_at(y, COLS - 30 + x * 3, hex, 2);
+            int hx = COLS - 30 + x * 3;
+            if (hx >= COLS - 30 && hx + 1 < COLS - 1) text_at(y, hx, hex, 2);
             if (at == e.pos && !e.read_only && e.hex_focus && e.hex_digit >= 0) {
                 static const char digits[] = "0123456789ABCDEF";
                 mvaddch(y, COLS - 30 + x * 3, digits[e.hex_digit]);
@@ -376,6 +380,9 @@ static void draw_binary_pane(int pane, int *cy, int *cx) {
             *cx = COLS - 30 + (int)(e.pos % 10) * 3 + (e.hex_digit >= 0);
         }
         if (*cx >= COLS - 1) *cx = COLS - 2;
+        if (*cx < 1) *cx = 1;
+        if (*cy >= bottom) *cy = bottom - 1;
+        if (*cy <= top) *cy = top + 1;
     }
 }
 
@@ -501,7 +508,7 @@ static void draw(bool present) {
         for (size_t i = 0; i < e.pos; ++i) if (e.s[i] == L'\n') ++line;
         char position[80];
         if (e.binary_view) snprintf(position, sizeof position, " Offset: %08zx / %zx  %s ", e.pos, e.n,
-            e.read_only ? "Read-only (F4=Edit)" : e.hex_focus ? "HEX (Tab=ASCII)" : "ASCII (Tab=HEX)");
+            e.read_only ? "Read-only" : e.hex_focus ? "HEX (Tab=ASCII)" : "ASCII (Tab=HEX)");
         else snprintf(position, sizeof position, " Line: %zu  Col: %d ", line, column(e.pos) + 1);
         int len = (int)strlen(position), x = COLS - len;
         if (x > 0) {
@@ -729,8 +736,10 @@ static bool load_mode(const char *path, const OpenOptions *options) {
         reset_document(view, n, copy_path(path), false, false);
         e.binary_bytes = (unsigned char *)bytes;
         e.binary_saved = alloc(n); if (n) memcpy(e.binary_saved, bytes, n);
-        e.read_only = e.binary_view = true;
-        message("Binary: text at left; six bytes from cursor at right. Read-only."); return true;
+        e.binary_view = true; e.read_only = options->read_only;
+        e.hex_focus = true;
+        message(e.read_only ? "Binary read-only." : "Binary overwrite: Tab=ASCII/HEX, Ctrl+Z=Undo, Ctrl+S=Save.");
+        return true;
     }
     if (n > SIZE_MAX / sizeof(wchar_t) - 1) die("File is too large.");
     wchar_t *text = alloc((n + 1) * sizeof(*text)); size_t len = 0, off = 0;
@@ -873,13 +882,27 @@ static void search_dialog(bool replacing) {
     }
 }
 static void about(void) {
-    if (small_screen(9, 54)) return;
-    Box b = box_open("About gui", 9, 54);
+    if (small_screen(18, 54)) return;
+    Box b = box_open("About gui", 18, 54);
+    static const char *art[] = {
+        " .--------------------------------.",
+        " |  ______   __  __   __           |",
+        " | / ____/  / / / /  / /           |",
+        " |/ / __   / / / /  / /            |",
+        " / /_/ /  / /_/ /  / /             |",
+        " \\____/   \\____/  /_/              |",
+        " |                                |",
+        " |       GUI TEXT EDITOR          |",
+        " |    [ Connected at 9600 bps ]    |",
+        " '--------------------------------'",
+    };
     attrset(COLOR_PAIR(DIALOG));
-    text_at(b.y + 2, b.x + 4, "gui 1.0.1", 45);
-    text_at(b.y + 3, b.x + 4, "Author: Guillermo Petruzzi", 45);
-    text_at(b.y + 4, b.x + 4, "License: GNU GPLv3 or later", 45);
-    button(b, 6, 21, "OK", true); refresh();
+    for (size_t i = 0; i < sizeof art / sizeof art[0]; ++i)
+        text_at(b.y + 1 + (int)i, b.x + 9, art[i], 40);
+    text_at(b.y + 12, b.x + 4, "gui 1.0.1", 45);
+    text_at(b.y + 13, b.x + 4, "Author: Guillermo Petruzzi", 45);
+    text_at(b.y + 14, b.x + 4, "License: GNU GPLv3 or later", 45);
+    button(b, 16, 21, "OK", true); refresh();
     for (;;) {
         wint_t c; int type = dialog_key(&c);
         if (type == ERR) continue;
@@ -889,16 +912,15 @@ static void about(void) {
         if (type == KEY_CODE_YES && c == KEY_MOUSE) {
             MEVENT m;
             if (getmouse(&m) == OK && (m.bstate & (BUTTON1_CLICKED | BUTTON1_PRESSED)) &&
-                m.y == b.y + 6 && m.x >= b.x + 21 && m.x < b.x + 25) break;
+                m.y == b.y + 16 && m.x >= b.x + 21 && m.x < b.x + 25) break;
         }
     }
 }
 #include "workspace.h"
-enum { NONE, NEW, OPEN, SAVE, QUIT, UNDO, REDO, COPY, CUT, PASTE, FIND, REPLACE, SELECT_ALL, ABOUT, NEXT, CASE, WHOLE, SAVE_AS, CLEAR, SPLIT, SIZE, CLOSE, SETTINGS, COLORS_DIALOG, EDIT_BINARY, DOCUMENT_FIRST = 100 };
+enum { NONE, NEW, OPEN, SAVE, QUIT, UNDO, REDO, COPY, CUT, PASTE, FIND, REPLACE, SELECT_ALL, ABOUT, NEXT, CASE, WHOLE, SAVE_AS, CLEAR, SPLIT, SIZE, CLOSE, SETTINGS, COLORS_DIALOG, DOCUMENT_FIRST = 100 };
 static bool action_enabled(int a) {
     bool selection = e.pos != e.anchor;
     if (a == NONE) return false;
-    if (a == EDIT_BINARY) return e.binary_view;
     if (e.binary_view && (a == CUT || a == CLEAR || a == PASTE || a == REPLACE)) return false;
     if (a == SIZE) return split_enabled;
     if (a == COPY) return selection;
@@ -939,12 +961,12 @@ restart:;
         snprintf(document_labels[i], sizeof document_labels[i], "%d %-16.16s Alt+%d", i + 1, name, i + 1);
         view[view_count] = document_labels[i]; va[view_count++] = DOCUMENT_FIRST + i;
     }
-    const char *options[] = {"Settings...", "Colors...", e.binary_view && !e.read_only ? "Read-only Binary     F4" : "Edit Binary          F4"};
-    const int oa[] = {SETTINGS, COLORS_DIALOG, EDIT_BINARY};
+    const char *options[] = {"Settings...", "Colors..."};
+    const int oa[] = {SETTINGS, COLORS_DIALOG};
     const char *help[] = {"About gui"}; const int ha[] = {ABOUT};
     const char **labels = which == 0 ? file : which == 1 ? edit : which == 2 ? search : which == 3 ? view : which == 4 ? options : help;
     const int *actions = which == 0 ? fa : which == 1 ? ea : which == 2 ? sa : which == 3 ? va : which == 4 ? oa : ha;
-    int count = which == 0 ? 5 : which == 1 ? 4 : which == 2 ? 3 : which == 3 ? view_count : which == 5 ? 1 : 3;
+    int count = which == 0 ? 5 : which == 1 ? 4 : which == 2 ? 3 : which == 3 ? view_count : which == 5 ? 1 : 2;
     int panel_width = which == 1 ? 20 : which == 3 ? 31 : 28;
     if (small_screen(count + 3, panel_width + 1)) return NONE;
     int selected = 0, x = menu_x[which];
@@ -1036,12 +1058,6 @@ static bool action(int a) {
     else if (a == CLOSE) close_window();
     else if (a == SETTINGS) settings_dialog();
     else if (a == COLORS_DIALOG) colors_dialog();
-    else if (a == EDIT_BINARY && e.binary_view) {
-        if (!e.read_only && dirty()) { message("Save or undo binary changes before returning to read-only."); return true; }
-        e.read_only = !e.read_only; e.hex_digit = -1; e.hex_focus = true;
-        message(e.read_only ? "Binary read-only." : "Binary overwrite: Tab=ASCII/HEX, Ctrl+Z=Undo, Ctrl+S=Save.");
-        repaint_needed = true;
-    }
     else if (a == NEXT) find_next(e.pos);
     else if (a == CASE) { e.match_case = !e.match_case; message(e.match_case ? "Match Case: On." : "Match Case: Off."); }
     else if (a == WHOLE) { e.whole_word = !e.whole_word; message(e.whole_word ? "Match Whole Word Only: On." : "Match Whole Word Only: Off."); }
@@ -1113,32 +1129,12 @@ static int menu_letter(wint_t c) {
 }
 static bool handle(wint_t c, int type) {
     if (type != KEY_CODE_YES || c != KEY_MOUSE) e.dragging = false;
+    /* Terminal/menu controls take priority over byte input and cancel previews. */
+    if (e.binary_view && type != KEY_CODE_YES && c != '\t' && (c < 32 || c == 127))
+        e.hex_digit = -1;
     if (e.binary_view && !e.read_only && type == KEY_CODE_YES &&
         c != KEY_MOUSE) e.hex_digit = -1;
     if (type != KEY_CODE_YES) {
-        if (e.binary_view && !e.read_only && c == '\t') {
-            e.hex_focus = !e.hex_focus; e.hex_digit = -1; repaint_needed = true; return true;
-        }
-        if (e.binary_view && !e.read_only && c >= 32 && c != 127 && !menu_keys) {
-            if (e.pos >= e.n) { message("End of file: binary mode only overwrites existing bytes."); return true; }
-            unsigned value;
-            if (e.hex_focus) {
-                int digit = c >= '0' && c <= '9' ? (int)c - '0' :
-                            c >= 'a' && c <= 'f' ? (int)c - 'a' + 10 :
-                            c >= 'A' && c <= 'F' ? (int)c - 'A' + 10 : -1;
-                if (digit < 0) { message("Enter hexadecimal digits 0-9 or A-F."); return true; }
-                if (e.hex_digit < 0) { e.hex_digit = digit; return true; }
-                value = (unsigned)(e.hex_digit * 16 + digit);
-            } else {
-                if (c > 126) { message("ASCII overwrite accepts characters from space to ~."); return true; }
-                value = (unsigned)c;
-            }
-            checkpoint(); e.hex_digit = -1;
-            e.binary_bytes[e.pos] = (unsigned char)value;
-            e.s[e.pos] = value >= 32 && value < 127 ? (wchar_t)value : L'.';
-            ++e.pos; e.anchor = e.pos; ++text_revision; return true;
-        }
-        if (e.binary_view && c != '\t') e.hex_digit = -1;
         if (menu_keys && c != 27) {
             int which = menu_letter(c);
             if (which >= 0) return menu_activate(which);
@@ -1168,6 +1164,28 @@ static bool handle(wint_t c, int type) {
             menu_keys = !menu_keys; repaint_needed = true;
             e.anchor = e.pos; return true;
         }
+        if (e.binary_view && !e.read_only && c == '\t') {
+            e.hex_focus = !e.hex_focus; e.hex_digit = -1; repaint_needed = true; return true;
+        }
+        if (e.binary_view && !e.read_only && c >= 32 && c != 127 && !menu_keys) {
+            if (e.pos >= e.n) { message("End of file: binary mode only overwrites existing bytes."); return true; }
+            unsigned value;
+            if (e.hex_focus) {
+                int digit = c >= '0' && c <= '9' ? (int)c - '0' :
+                            c >= 'a' && c <= 'f' ? (int)c - 'a' + 10 :
+                            c >= 'A' && c <= 'F' ? (int)c - 'A' + 10 : -1;
+                if (digit < 0) { message("Enter hexadecimal digits 0-9 or A-F."); return true; }
+                if (e.hex_digit < 0) { e.hex_digit = digit; return true; }
+                value = (unsigned)(e.hex_digit * 16 + digit);
+            } else {
+                if (c > 126) { message("ASCII overwrite accepts characters from space to ~."); return true; }
+                value = (unsigned)c;
+            }
+            checkpoint(); e.hex_digit = -1;
+            e.binary_bytes[e.pos] = (unsigned char)value;
+            e.s[e.pos] = value >= 32 && value < 127 ? (wchar_t)value : L'.';
+            ++e.pos; e.anchor = e.pos; ++text_revision; return true;
+        }
         if (c == 127 || c == 8) c = KEY_BACKSPACE;
         else if (c == '\n' || c == '\r') { insert(L"\n", 1); return true; }
         else if (c == '\t') { insert(L"\t", 1); return true; }
@@ -1192,7 +1210,6 @@ static bool handle(wint_t c, int type) {
         if (moved) { move_to(p, shift, false); return true; }
     }
 
-    if (c == KEY_F(4) && e.binary_view) return action(EDIT_BINARY);
     if (c == KEY_F(1)) return action(ABOUT);
     else if (c == KEY_F(3)) find_next(e.pos);
     else if (c == KEY_F(10)) return menu_activate(0);

@@ -226,8 +226,8 @@ static bool path_prompt(const char *title, char **out) {
         bool enter = c == '\n' || c == '\r' || (t == KEY_CODE_YES && c == KEY_ENTER);
         if (opening && (focus == 3 || focus == 4)) {
             if (enter || c == ' ') {
-                if (focus == 3 && !options.binary) options.read_only = !options.read_only;
-                if (focus == 4) { options.binary = !options.binary; if (options.binary) options.read_only = true; }
+                if (focus == 3) options.read_only = !options.read_only;
+                if (focus == 4) options.binary = !options.binary;
             }
             continue;
         }

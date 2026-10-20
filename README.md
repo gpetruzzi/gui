@@ -197,16 +197,20 @@ and requires at least 53 terminal columns.
 
 ## Binary overwrite editing
 
-Binary files still open read-only. Use Options -> Edit Binary or F4 to enable
-overwrite editing. Tab switches between HEX and ASCII; clicking either pane
-also chooses it. In HEX enter two digits (00-FF) to replace one byte; the first
-digit is a preview and does not modify the file. Moving the cursor or changing
-modes cancels that preview. ASCII mode accepts printable ASCII characters.
-The cursor advances after a complete byte. File size never changes: insertion,
-deletion, paste and replacement are unavailable in binary mode.
+In File -> Open, Open Binary and Open Read-only are independent choices.
+Leave Read-only unchecked to edit a binary directly; check it for inspection.
+There is no Edit Binary menu command or F4 mode switch.
 
-Ctrl+Z/Ctrl+Y undo and redo complete byte changes. Ctrl+S saves the original
-byte sequence with the changes, including NUL and non-ASCII bytes, using the
-regular atomic save path. Save As is also available. Unsaved binary changes
-participate in the usual save/discard prompt. Save or undo changes before
-switching back to read-only mode.
+Tab switches between HEX and ASCII; clicking either pane also chooses it.
+Enter two hexadecimal digits (00-FF) to overwrite one byte. The first digit
+is only a preview. Cursor movement, menu controls and mode changes cancel it.
+ASCII mode accepts printable ASCII characters. File size never changes:
+insertion, deletion, paste and replacement are unavailable in binary mode.
+Ctrl+Z/Ctrl+Y undo and redo complete byte changes; Ctrl+S saves raw bytes
+atomically, including NUL and non-ASCII values. Save As is also available.
+Unsaved changes use the usual save/discard prompt.
+
+Menu controls and Alt accelerators take priority over byte input in both
+binary panes. The ASCII pane reflows on terminal resize; the right hex pane
+stays at 29 columns. About gui shows a BBS-style ASCII banner with the author,
+version and license.

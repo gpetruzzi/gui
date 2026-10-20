@@ -135,9 +135,9 @@ static void test_binary_overwrite(void) {
     int fd = mkstemp(path); assert(fd >= 0);
     unsigned char original[] = {0, 255, 'A', 10};
     assert(write(fd, original, sizeof original) == sizeof original); assert(close(fd) == 0);
-    const OpenOptions binary = {true, true, 70};
+    const OpenOptions binary = {false, true, 70};
     assert(load_mode(path, &binary));
-    assert(action(EDIT_BINARY) && !e.read_only && e.hex_focus);
+    assert(!e.read_only && e.hex_focus);
     assert(handle('0', OK)); assert(!dirty() && e.pos == 0); /* half a byte */
     assert(handle('1', OK)); assert(dirty() && e.pos == 1);
     assert(e.binary_bytes[0] == 1 && e.s[0] == L'.');
@@ -159,7 +159,8 @@ static void test_binary_overwrite(void) {
     undo_redo(false); assert(dirty() && e.binary_bytes[1] == 255);
     undo_redo(true); assert(!dirty());
     move_to(e.n, false, false); handle('Q', OK); assert(e.n == size);
-    assert(action(EDIT_BINARY) && e.read_only);
+    const OpenOptions readonly = {true, true, 70};
+    assert(load_mode(path, &readonly) && e.read_only);
     assert(!save());
     document(L""); assert(!e.binary_bytes && !e.binary_saved);
     assert(unlink(path) == 0);

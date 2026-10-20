@@ -133,8 +133,13 @@ Text must be valid UTF-8 without NUL bytes.  The UTF-8 byte-order mark
 and uniform LF or CRLF line endings are preserved; mixed line endings
 are normalized to CRLF if any CRLF is present.
 .PP
-Open Binary provides a read-only hexadecimal view, not binary editing.
-Its Line Width setting is bytes per row, from 1 to 256.
+Open Binary displays a full-width ASCII pane and a 29-column hexadecimal pane.
+Open Read-only independently controls whether byte overwrite editing is allowed.
+In editable binary mode, Tab switches between ASCII and hexadecimal input.
+Two hexadecimal digits replace one byte. Ctrl+Z and Ctrl+Y undo and redo;
+Ctrl+S saves the raw bytes. Binary editing never inserts or deletes bytes.
+The text layout follows the terminal width; hexadecimal uses ten bytes per row.
+Line Width is automatic.
 Search is literal, without regular expressions.
 Saving over symbolic links is not supported.
 .PP

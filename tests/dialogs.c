@@ -154,6 +154,24 @@ static void test_binary_layout(void) {
     assert(resizeterm(26, 120) == OK); draw(true);
     assert(binary_text_width() == 78);
     assert(e.pos == 59 && e.binary_bytes[e.pos] == 59);
+    /* Menu accelerator letters must take priority over ASCII byte input. */
+    e.read_only = false; e.hex_focus = false;
+    size_t cursor = e.pos; unsigned char before = e.binary_bytes[cursor];
+    queue_cancel(); assert(handle(KEY_F(10), KEY_CODE_YES)); assert_cancel_consumed_once();
+    assert(e.pos == cursor && e.binary_bytes[cursor] == before && !dirty());
+    queue_cancel(); assert(handle(KEY_F(1), KEY_CODE_YES)); assert_cancel_consumed_once();
+    assert(e.pos == cursor && !dirty());
+    assert(unget_wch(27) == OK); assert(handle(27, OK));
+    assert(menu_keys);
+    queue_cancel(); assert(handle('o', OK)); assert_cancel_consumed_once();
+    assert(!menu_keys && e.binary_bytes[cursor] == before);
+    for (int cols = 53; cols <= 160; cols += 7) {
+        assert(resizeterm(26, cols) == OK); draw(true);
+        int cy, cx; getyx(stdscr, cy, cx);
+        assert(cx >= 0 && cx < cols && cy >= EDIT_TOP && cy < pane_bottom(active_pane));
+        assert(binary_text_width() + 11 <= COLS - 31);
+        assert((mvinch(EDIT_TOP, COLS - 31) & A_CHARTEXT) != ' ');
+    }
     move_to(e.n, false, false); draw(true);
     handle(KEY_NPAGE, KEY_CODE_YES); assert(e.pos == e.n);
     assert(resizeterm(10, 30) == OK); draw(true);

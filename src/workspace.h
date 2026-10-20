@@ -88,7 +88,7 @@ static void workspace_open(const char *path, const OpenOptions *options) {
         bool same = exists && stat(documents[i].path, &current) == 0 &&
                     candidate.st_dev == current.st_dev && candidate.st_ino == current.st_ino;
         if (same && documents[i].binary_view == options->binary &&
-            documents[i].read_only == (options->read_only || options->binary)) {
+            documents[i].read_only == options->read_only) {
             document_select(i); discard_empty_untitled(); return;
         }
     }
