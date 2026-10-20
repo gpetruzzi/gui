@@ -146,10 +146,10 @@ static bool path_prompt(const char *title, char **out) {
             snprintf(label, sizeof label, "[%c] Open Binary", options.binary ? 'X' : ' ');
             hot_label(b.y + option_row + 1, b.x + right, label, pane_width, 9);
             if (focus == 4) mvchgat(b.y + option_row + 1, b.x + right, 3, A_REVERSE, DIALOG, NULL);
-            if (!options.binary) attron(A_DIM);
+            attron(A_DIM);
             hot_label(b.y + option_row + 3, b.x + right, "Line Width:", 11, 5);
-            field(b, option_row + 3, right + 12, 4, line_width, width_pos, false);
-            if (!options.binary) mvchgat(b.y + option_row + 3, b.x + right, pane_width, A_DIM, DIALOG, NULL);
+            field(b, option_row + 3, right + 12, 4, L"Auto", 0, false);
+            mvchgat(b.y + option_row + 3, b.x + right, pane_width, A_DIM, DIALOG, NULL);
         }
         for (int i = 0; i < 3; ++i) button(b, height - 3, bx[i], labels[i], focus == i + ok_focus);
         if (help) footer("Tab=Next Field  Arrows=Select  Enter=Open Directory/OK  Esc=Cancel");
@@ -164,7 +164,7 @@ static bool path_prompt(const char *title, char **out) {
             if (c == 'd') { focus = 2; continue; }
             if (c == 'r' && opening) { focus = 3; c = ' '; t = OK; }
             else if (c == 'b' && opening) { focus = 4; c = ' '; t = OK; }
-            else if (c == 'w' && opening && options.binary) { focus = 5; continue; }
+            else if (c == 'w' && opening) continue;
             else if (c == 'o') { focus = ok_focus; c = '\n'; t = OK; }
             else if (c == 'c') break;
             else if (c == 'h') { help = !help; continue; }
@@ -172,11 +172,11 @@ static bool path_prompt(const char *title, char **out) {
         }
         if (c == 27 || (t == KEY_CODE_YES && c == KEY_RESIZE)) break;
         if (c == '\t') {
-            do { focus = (focus + 1) % total_focus; } while (opening && focus == 5 && !options.binary);
+            do { focus = (focus + 1) % total_focus; } while (opening && focus == 5);
             continue;
         }
         if (t == KEY_CODE_YES && c == KEY_BTAB) {
-            do { focus = (focus + total_focus - 1) % total_focus; } while (opening && focus == 5 && !options.binary);
+            do { focus = (focus + total_focus - 1) % total_focus; } while (opening && focus == 5);
             continue;
         }
         if (t == KEY_CODE_YES && c == KEY_F(1)) { help = !help; continue; }
@@ -191,7 +191,7 @@ static bool path_prompt(const char *title, char **out) {
             if (y == 2) { focus = 0; continue; }
             if (opening && x >= right && x < right + pane_width &&
                 (y == option_row || y == option_row + 1 || y == option_row + 3)) {
-                if (y == option_row + 3) { if (options.binary) focus = 5; continue; }
+                if (y == option_row + 3) continue;
                 focus = y == option_row ? 3 : 4; c = ' '; t = OK;
             } else if (y >= list_top + 1 && y < list_top + 1 + rows) {
                 int pane = x >= 2 && x < 2 + pane_width ? 0 : x >= right && x < right + pane_width ? 1 : -1;
@@ -270,13 +270,6 @@ static bool path_prompt(const char *title, char **out) {
         if (enter || (c == ' ' && focus >= ok_focus)) {
             if (focus == ok_focus + 1) break;
             if (focus == ok_focus + 2) { help = !help; continue; }
-            if (opening && options.binary) {
-                wchar_t *end; unsigned long value = wcstoul(line_width, &end, 10);
-                if (!line_width[0] || *end || value < 1 || value > 256) {
-                    message("Binary Line Width must be between 1 and 256 bytes."); focus = 5; continue;
-                }
-                options.line_width = (unsigned)value;
-            }
             if (!name[0]) { focus = 0; continue; }
             size_t n = wcstombs(NULL, name, 0);
             if (n == (size_t)-1) { message("File name is not valid UTF-8."); continue; }

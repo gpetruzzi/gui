@@ -124,6 +124,33 @@ static void test_untitled_open(void) {
     document_select(loaded); document_free(blank); document_free(edited);
     assert(unlink(file) == 0 && rmdir(dir) == 0); free(file);
 }
+static void test_binary_layout(void) {
+    char path[] = "/tmp/gui-binary-layout-XXXXXX";
+    int fd = mkstemp(path); assert(fd >= 0);
+    unsigned char data[256];
+    for (int i = 0; i < 256; ++i) data[i] = (unsigned char)i;
+    assert(write(fd, data, sizeof data) == sizeof data); assert(close(fd) == 0);
+    OpenOptions options = {true, true, 70};
+    assert(load_mode(path, &options));
+    assert(resizeterm(26, 100) == OK);
+    draw(true);
+    int width = binary_text_width(); assert(width == 69);
+    assert((mvinch(3, 12 + width) & A_CHARTEXT) == '0');
+    assert((mvinch(3, 13 + width) & A_CHARTEXT) == '0');
+    handle(KEY_DOWN, KEY_CODE_YES); assert(e.pos == (size_t)width);
+    handle(KEY_RIGHT, KEY_CODE_YES); assert(e.pos == (size_t)width + 1);
+    draw(true);
+    assert((mvinch(3, 12 + width) & A_CHARTEXT) == '4');
+    assert((mvinch(3, 13 + width) & A_CHARTEXT) == '6');
+    assert(mouse_position(EDIT_TOP + 1, 13) == e.top + (size_t)width + 2);
+    move_to(e.n, false, false); draw(true);
+    handle(KEY_NPAGE, KEY_CODE_YES); assert(e.pos == e.n);
+    assert(resizeterm(10, 30) == OK); draw(true);
+    assert(resizeterm(26, 100) == OK); draw(true);
+    reset_document(copy_text(L"", 0), 0, NULL, false, false);
+    assert(!e.binary_bytes);
+    assert(unlink(path) == 0);
+}
 int main(void) {
     assert(setlocale(LC_ALL, "C.UTF-8"));
     /* Explicit terminfo and temporary streams avoid a physical display or TTY.
@@ -136,7 +163,7 @@ int main(void) {
         assert(init_pair((short)pair, COLOR_BLACK, COLOR_WHITE) == OK);
     e.s = copy_text(L"", 0); e.saved = copy_text(L"", 0); e.preferred = -1;
     memcpy(theme, default_theme, sizeof theme);
-    test_escape_policy(); test_cancel_dialogs(); test_open_selected_file(); test_untitled_open();
+    test_escape_policy(); test_cancel_dialogs(); test_open_selected_file(); test_untitled_open(); test_binary_layout();
     endwin(); delscreen(screen); fclose(input); fclose(output);
     for (int i = 0; i < MAX_DOCS; ++i) document_free(i);
     puts("Dialog tests: OK"); return 0;

@@ -60,6 +60,7 @@ static const int menu_width[] = {4, 4, 6, 4, 7, 4};
 typedef struct { wchar_t *s; size_t n, pos, anchor; } Snapshot;
 typedef struct {
     wchar_t *s, *saved, *clip;
+    unsigned char *binary_bytes;
     size_t n, pos, anchor, clip_n, top;
     int left, preferred;
     char *path;
@@ -287,7 +288,67 @@ typedef struct {
     int doc;
 } PaintCache;
 static PaintCache paint_cache[2];
+
+/* Binary offsets always refer to source bytes, never formatted hex text. */
+static int binary_text_width(void) {
+    int width = COLS - 2 - 10 - 19;
+    return width > 0 ? width : 1;
+}
+static void draw_binary_pane(int pane, int *cy, int *cx) {
+    int top = pane_top(pane), bottom = pane_bottom(pane);
+    int height = bottom - top - 1, width = binary_text_width();
+    if (height < 1) return;
+    if (COLS < 40) {
+        attrset(COLOR_PAIR(EDIT));
+        for (int y = top; y <= bottom; ++y) mvhline(y, 0, ' ', COLS);
+        text_at(top + 1, 0, "Enlarge window for binary view (40 cols).", COLS);
+        if (pane == active_pane) { *cy = top + 1; *cx = 0; }
+        return;
+    }
+    e.pos = e.pos > e.n ? e.n : e.pos;
+    size_t row = e.pos / (size_t)width, first = e.top / (size_t)width;
+    if (row < first) first = row;
+    if (row - first >= (size_t)height) first = row - (size_t)height + 1;
+    e.top = first * (size_t)width; e.left = 0;
+    attrset(COLOR_PAIR(FRAME));
+    wide_line(top, 0, L'\u2500', COLS);
+    wide_line(bottom, 0, L'\u2500', COLS);
+    char title[256]; snprintf(title, sizeof title, " %s [Binary / Read-only] ", e.path ? e.path : "");
+    attrset(COLOR_PAIR(BAR)); text_at(top, 1, title, COLS - 2);
+    size_t a, b; range(&a, &b);
+    for (int y = top + 1; y < bottom; ++y) {
+        attrset(COLOR_PAIR(EDIT)); mvhline(y, 0, ' ', COLS);
+        size_t off = e.top + (size_t)(y - top - 1) * (size_t)width;
+        if (off <= e.n) {
+            char address[32]; snprintf(address, sizeof address, "%08zx", off);
+            text_at(y, 1, address, 8);
+        }
+        for (int x = 0; x < width && off < e.n && (size_t)x < e.n - off; ++x) {
+            size_t at = off + (size_t)x;
+            attrset(COLOR_PAIR(at >= a && at < b ? SELECT : EDIT));
+            wide_at(y, 11 + x, e.s[at]);
+        }
+        attrset(COLOR_PAIR(FRAME));
+        wide_at(y, 0, L'\u2502'); wide_at(y, 9, L'\u2502');
+        wide_at(y, 11 + width, L'\u2502'); wide_at(y, COLS - 1, L'\u2502');
+    }
+    /* A fixed narrow inspector follows the active cursor, six bytes total. */
+    int hx = 12 + width;
+    attrset(COLOR_PAIR(BAR)); text_at(top + 1, hx, "Hex: cursor + 0..5", COLS - hx - 1);
+    attrset(COLOR_PAIR(EDIT));
+    if (top + 2 < bottom) for (size_t i = 0; i < 6 && e.pos < e.n && i < e.n - e.pos; ++i) {
+        char hex[4]; snprintf(hex, sizeof hex, "%02X", e.binary_bytes[e.pos + i]);
+        text_at(top + 2, hx + (int)i * 3, hex, COLS - hx - (int)i * 3 - 1);
+    }
+    if (pane == active_pane) {
+        *cy = top + 1 + (int)(row - first);
+        *cx = 11 + (int)(e.pos % (size_t)width);
+        if (*cx >= COLS - 1) *cx = COLS - 2;
+    }
+}
+
 static void draw_pane(int pane, bool full, int *cursor_y, int *cursor_x) {
+    if (e.binary_view) { draw_binary_pane(pane, cursor_y, cursor_x); return; }
     int top = pane_top(pane), bottom = pane_bottom(pane);
     int height = bottom - top - 1, width = COLS - 2;
     PaintCache *cache = &paint_cache[pane];
@@ -406,7 +467,9 @@ static void draw(bool present) {
         footer(e.message[0] ? e.message : "F1=Help  F6=Next Window  F10=Menu");
         size_t line = 1;
         for (size_t i = 0; i < e.pos; ++i) if (e.s[i] == L'\n') ++line;
-        char position[80]; snprintf(position, sizeof position, " Line: %zu  Col: %d ", line, column(e.pos) + 1);
+        char position[80];
+        if (e.binary_view) snprintf(position, sizeof position, " Offset: %08zx / %zx  Read-only ", e.pos, e.n);
+        else snprintf(position, sizeof position, " Line: %zu  Col: %d ", line, column(e.pos) + 1);
         int len = (int)strlen(position), x = COLS - len;
         if (x > 0) {
             attrset(COLOR_PAIR(STATUS)); mvaddch(LINES - 1, x - 1, '|');
@@ -589,36 +652,12 @@ static bool may_discard(void) {
     return answer == 1 || (answer == 0 && save());
 }
 static void reset_document(wchar_t *s, size_t n, char *path, bool crlf, bool bom) {
-    free(e.s); free(e.saved); free(e.path);
+    free(e.s); free(e.saved); free(e.path); free(e.binary_bytes); e.binary_bytes = NULL;
     e.s = s; e.n = n; e.path = path; e.saved = copy_text(s, n);
     ++text_revision;
     e.pos = e.anchor = e.top = 0; e.left = 0; e.preferred = -1; e.crlf = crlf; e.bom = bom;
     e.read_only = e.binary_view = e.dragging = false;
     clear_history(e.undo, &e.un); clear_history(e.redo, &e.rn);
-}
-static wchar_t *hex_document(const unsigned char *bytes, size_t n, unsigned width, size_t *length) {
-    if (width < 1 || width > 256) width = 70;
-    size_t rows = n / width + (n % width != 0);
-    if (n > SIZE_MAX / 4 || rows > (SIZE_MAX - n * 4 - 1) / 24) die("File is too large.");
-    size_t cap = n * 4 + rows * 24 + 1;
-    if (cap > SIZE_MAX / sizeof(wchar_t)) die("File is too large.");
-    wchar_t *out = alloc(cap * sizeof(*out)); size_t at = 0;
-    static const wchar_t digits[] = L"0123456789ABCDEF";
-    for (size_t off = 0; off < n;) {
-        char address[32]; int len = snprintf(address, sizeof address, "%08zx: ", off);
-        for (int i = 0; i < len; ++i) out[at++] = (wchar_t)address[i];
-        size_t count = n - off < width ? n - off : width;
-        for (size_t i = 0; i < count; ++i) {
-            unsigned char c = bytes[off + i];
-            out[at++] = digits[c >> 4]; out[at++] = digits[c & 15]; out[at++] = L' ';
-        }
-        out[at++] = L'|';
-        for (size_t i = 0; i < count; ++i) {
-            unsigned char c = bytes[off + i]; out[at++] = c >= 32 && c < 127 ? (wchar_t)c : L'.';
-        }
-        out[at++] = L'|'; out[at++] = L'\n'; off += count;
-    }
-    out[at] = 0; *length = at; return out;
 }
 static bool load_mode(const char *path, const OpenOptions *options) {
     FILE *f = fopen(path, "rb");
@@ -640,10 +679,17 @@ static bool load_mode(const char *path, const OpenOptions *options) {
     bool ok = !ferror(f); fclose(f);
     if (options->binary) {
         if (!ok) { free(bytes); message("Cannot read binary file."); return false; }
-        size_t len; wchar_t *view = hex_document((unsigned char *)bytes, n, options->line_width, &len);
-        free(bytes); reset_document(view, len, copy_path(path), false, false);
+        if (n > SIZE_MAX / sizeof(wchar_t) - 1) die("File is too large.");
+        wchar_t *view = alloc((n + 1) * sizeof(*view));
+        for (size_t i = 0; i < n; ++i) {
+            unsigned char byte = (unsigned char)bytes[i];
+            view[i] = byte >= 32 && byte < 127 ? byte : L'.';
+        }
+        view[n] = 0;
+        reset_document(view, n, copy_path(path), false, false);
+        e.binary_bytes = (unsigned char *)bytes;
         e.read_only = e.binary_view = true;
-        message("Binary hex view: read-only. Line Width is bytes per row."); return true;
+        message("Binary: text at left; six bytes from cursor at right. Read-only."); return true;
     }
     if (n > SIZE_MAX / sizeof(wchar_t) - 1) die("File is too large.");
     wchar_t *text = alloc((n + 1) * sizeof(*text)); size_t len = 0, off = 0;
@@ -952,6 +998,13 @@ static bool action(int a) {
     return true;
 }
 static size_t mouse_position(int y, int x) {
+    if (e.binary_view) {
+        int width = binary_text_width(), col = x - 11;
+        if (col < 0) col = 0;
+        if (col >= width) col = width - 1;
+        size_t p = e.top + (size_t)(y - EDIT_TOP) * (size_t)width + (size_t)col;
+        return p < e.n ? p : e.n;
+    }
     size_t p = e.top;
     for (int i = EDIT_TOP; i < y && p < e.n; ++i) { size_t end = line_end(p); p = end < e.n ? end + 1 : end; }
     return at_column(p, x - EDIT_LEFT + e.left);
@@ -1041,6 +1094,24 @@ static bool handle(wint_t c, int type) {
         else if (iswprint(c)) { wchar_t s = (wchar_t)c; insert(&s, 1); return true; }
         else return true;
     }
+
+    if (e.binary_view) {
+        size_t width = (size_t)binary_text_width(), p = e.pos;
+        bool shift = c == KEY_SLEFT || c == KEY_SRIGHT || c == K_SUP || c == K_SDOWN || c == K_SHOME || c == K_SEND;
+        bool moved = true;
+        if (c == KEY_LEFT || c == KEY_SLEFT) p = p ? p - 1 : 0;
+        else if (c == KEY_RIGHT || c == KEY_SRIGHT) p = p < e.n ? p + 1 : e.n;
+        else if (c == KEY_UP || c == K_SUP) p = p >= width ? p - width : 0;
+        else if (c == KEY_DOWN || c == K_SDOWN) p = e.n - p >= width ? p + width : e.n;
+        else if (c == KEY_HOME || c == K_SHOME) p -= p % width;
+        else if (c == KEY_END || c == K_SEND) { size_t n = width - 1 - p % width; p += n < e.n - p ? n : e.n - p; }
+        else if (c == KEY_PPAGE || c == KEY_NPAGE) {
+            size_t step = width * (size_t)(pane_bottom(active_pane) - EDIT_TOP);
+            p = c == KEY_PPAGE ? (p >= step ? p - step : 0) : (e.n - p >= step ? p + step : e.n);
+        } else moved = false;
+        if (moved) { move_to(p, shift, false); return true; }
+    }
+
     if (c == KEY_F(1)) return action(ABOUT);
     else if (c == KEY_F(3)) find_next(e.pos);
     else if (c == KEY_F(10)) return menu_activate(0);
@@ -1079,6 +1150,30 @@ static bool handle(wint_t c, int type) {
         MEVENT m; if (getmouse(&m) != OK) return true;
         if (split_enabled && !e.dragging && (m.bstate & (BUTTON1_CLICKED | BUTTON1_PRESSED)) && m.y > 0 && m.y < LINES - 2)
             pane_select(m.y >= split_row ? 1 : 0);
+        if (e.binary_view && m.y != 0) {
+            if (m.bstate & BUTTON1_RELEASED) {
+                if (e.dragging) {
+                    int y = m.y < EDIT_TOP ? EDIT_TOP : m.y >= pane_bottom(active_pane) ? pane_bottom(active_pane) - 1 : m.y;
+                    mouse_select(mouse_position(y, m.x), m.bstate);
+                }
+                e.dragging = false; return true;
+            }
+            if (m.y >= EDIT_TOP && m.y < pane_bottom(active_pane)) {
+                if (m.bstate & BUTTON4_PRESSED) {
+                    size_t step = (size_t)binary_text_width() * 3;
+                    move_to(e.pos > step ? e.pos - step : 0, false, false);
+                }
+#ifdef BUTTON5_PRESSED
+                else if (m.bstate & BUTTON5_PRESSED) {
+                    size_t step = (size_t)binary_text_width() * 3;
+                    move_to(e.n - e.pos > step ? e.pos + step : e.n, false, false);
+                }
+#endif
+                else if (m.x >= 11 && m.x < 11 + binary_text_width())
+                    mouse_select(mouse_position(m.y, m.x), m.bstate);
+            }
+            return true;
+        }
         if (e.dragging && (m.bstate & (BUTTON1_PRESSED | BUTTON1_RELEASED | REPORT_MOUSE_POSITION))) {
             if (LINES < 5 || COLS < 3) { e.dragging = false; return true; }
             int y = m.y, x = m.x;

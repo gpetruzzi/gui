@@ -14,7 +14,7 @@ Open up to nine documents, work in two editing panels, search and replace text, 
 - Gray dialogs with white title strips, dotted input fields, checkboxes and white buttons with thin black shadows. Labels highlight their Alt access letter in white; button access letters are underlined in black for contrast against the white button face.
 - File and directory scrollbars use white arrows on black, white stipple on a black track and a solid white proportional thumb. These styles are shared by all applicable dialogs and editor panels.
 - Open and Save As use a classic two-pane browser: File Name, current path, Existing Files and Directories, with OK, Cancel and Help buttons. Use Tab to move between controls and arrows to select an entry. In Open, Enter opens the selected file immediately; double-clicking a file also opens it. Enter on a directory navigates into it. Saving to another existing file asks before replacing it.
-- Open has a taller Files pane and a shorter Directories pane, followed by Open Read-only, Open Binary and Line Width. Read-only blocks edits and saving. Open Binary opens a **read-only hexadecimal view**, not a binary editor; Line Width is the number of source bytes per row (1–256, default 70). It is disabled for ordinary text files.
+- Open has a taller Files pane and a shorter Directories pane, followed by Open Read-only, Open Binary and Line Width. Read-only blocks edits and saving. Open Binary opens a **read-only hexadecimal view**, not a binary editor; Line Width is automatic in binary view: the text uses the available terminal width.
 
 The terminal font controls the exact appearance of characters and shadows. All dialogs share a full-width, one-row white title strip, white buttons with black text, inward ASCII arrow focus markers (`> OK <`) and a short half-cell black shadow offset down and right. On 256-color terminals, fixed palette slots provide black (#000000), white (#ffffff) and a darker gray (#a8a8a8). Button text uses no bold or reverse video. A UTF-8 font containing half-block glyphs is required for those details. No terminal palette entries are reprogrammed.
 
@@ -181,3 +181,11 @@ The About dialog identifies gui 1.0, its author Guillermo Petruzzi, and the GPL 
 Opening a file removes untouched empty Untitled documents, including when
 selecting a file that is already open. Documents containing text or edit
 history are preserved. Failed opens keep the empty document.
+
+## Binary viewer layout
+
+Open Binary displays byte offsets at the left, a wide text pane and a narrow
+six-byte hexadecimal inspector at the right. The inspector follows the cursor;
+non-printable bytes appear as dots in the text pane. Arrow keys, Page Up/Down,
+Home/End and mouse selection use source-byte positions. The view reflows when
+the terminal is resized, requires at least 40 columns and remains read-only.

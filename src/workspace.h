@@ -36,7 +36,7 @@ static int document_new(void) {
 }
 static void document_free(int doc) {
     Editor *d = &documents[doc];
-    free(d->s); free(d->saved); free(d->path); free(d->clip);
+    free(d->s); free(d->saved); free(d->path); free(d->clip); free(d->binary_bytes);
     clear_history(d->undo, &d->un); clear_history(d->redo, &d->rn);
     memset(d, 0, sizeof *d);
 }
