@@ -893,7 +893,7 @@ static void about(void) {
         " \\____/   \\____/  /_/              |",
         " |                                |",
         " |       GUI TEXT EDITOR          |",
-        " |    [ Connected at 9600 bps ]    |",
+        " |                                |",
         " '--------------------------------'",
     };
     attrset(COLOR_PAIR(DIALOG));
