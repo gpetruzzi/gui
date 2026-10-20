@@ -130,6 +130,41 @@ static void test_read_only_and_binary_view(void) {
     document(L"editable"); assert(!e.read_only && !e.binary_view);
     assert(unlink(path) == 0);
 }
+static void test_binary_overwrite(void) {
+    char path[] = "/tmp/gui-binary-edit-XXXXXX";
+    int fd = mkstemp(path); assert(fd >= 0);
+    unsigned char original[] = {0, 255, 'A', 10};
+    assert(write(fd, original, sizeof original) == sizeof original); assert(close(fd) == 0);
+    const OpenOptions binary = {true, true, 70};
+    assert(load_mode(path, &binary));
+    assert(action(EDIT_BINARY) && !e.read_only && e.hex_focus);
+    assert(handle('0', OK)); assert(!dirty() && e.pos == 0); /* half a byte */
+    assert(handle('1', OK)); assert(dirty() && e.pos == 1);
+    assert(e.binary_bytes[0] == 1 && e.s[0] == L'.');
+    /* Different non-printable bytes must still be detected as a change. */
+    assert(!wcscmp(e.s, e.saved));
+    undo_redo(false); assert(!dirty() && e.binary_bytes[0] == 0);
+    undo_redo(true); assert(dirty() && e.binary_bytes[0] == 1);
+    assert(handle('\t', OK) && !e.hex_focus);
+    assert(handle('Z', OK) && e.binary_bytes[1] == 'Z');
+    size_t size = e.n;
+    handle(KEY_DC, KEY_CODE_YES); assert(e.n == size);
+    assert(action(REPLACE) && e.n == size);
+    assert(save() && !dirty());
+    FILE *file = fopen(path, "rb"); assert(file);
+    unsigned char actual[5] = {0};
+    assert(fread(actual, 1, sizeof actual, file) == 4); fclose(file);
+    const unsigned char expected[] = {1, 'Z', 'A', 10};
+    assert(!memcmp(actual, expected, sizeof expected));
+    undo_redo(false); assert(dirty() && e.binary_bytes[1] == 255);
+    undo_redo(true); assert(!dirty());
+    move_to(e.n, false, false); handle('Q', OK); assert(e.n == size);
+    assert(action(EDIT_BINARY) && e.read_only);
+    assert(!save());
+    document(L""); assert(!e.binary_bytes && !e.binary_saved);
+    assert(unlink(path) == 0);
+}
+
 static void test_edit_menu_commands(void) {
     document(L"abc");
     free(e.clip); e.clip = NULL; e.clip_n = 0;
@@ -288,7 +323,7 @@ int main(void) {
     test_selection_and_undo(); test_search_and_replace();
     test_lines_and_history_limit(); test_utf8_and_disk();
     test_file_picker_lists();
-    test_read_only_and_binary_view();
+    test_read_only_and_binary_view(); test_binary_overwrite();
     test_edit_menu_commands();
     test_mouse_drag_copy_paste();
     test_cursor_repaint_state();

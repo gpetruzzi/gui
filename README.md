@@ -192,5 +192,21 @@ bytes. Moving the cursor scrolls the hexadecimal view to keep the same byte
 visible and highlighted in both panes. Selecting in either pane highlights
 the corresponding bytes. Clicking a hex byte moves to its source position.
 Arrow keys and Page Up/Down move through the ASCII layout. Resize reflows
-the text while preserving the byte position. The viewer remains read-only
+the text while preserving the byte position. The viewer opens read-only by default
 and requires at least 53 terminal columns.
+
+## Binary overwrite editing
+
+Binary files still open read-only. Use Options -> Edit Binary or F4 to enable
+overwrite editing. Tab switches between HEX and ASCII; clicking either pane
+also chooses it. In HEX enter two digits (00-FF) to replace one byte; the first
+digit is a preview and does not modify the file. Moving the cursor or changing
+modes cancels that preview. ASCII mode accepts printable ASCII characters.
+The cursor advances after a complete byte. File size never changes: insertion,
+deletion, paste and replacement are unavailable in binary mode.
+
+Ctrl+Z/Ctrl+Y undo and redo complete byte changes. Ctrl+S saves the original
+byte sequence with the changes, including NUL and non-ASCII bytes, using the
+regular atomic save path. Save As is also available. Unsaved binary changes
+participate in the usual save/discard prompt. Save or undo changes before
+switching back to read-only mode.
